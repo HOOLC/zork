@@ -94,6 +94,9 @@ pub struct Presentation {
     /// Host-rendered draft file row (see [`files::render`]); it occupies
     /// [`row_geometry::FILES_BAND`] at the top of the surface.
     pub files: Option<AnyElement>,
+    /// Host-rendered draft comments (`components::comments::drafts`) and the
+    /// band they occupy at the top of the surface, above files and the editor.
+    pub drafts: Option<(AnyElement, f32)>,
     pub busy: bool,
     pub editor_label: SharedString,
     pub attach_label: SharedString,
@@ -133,8 +136,11 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     let p = scene.body();
     let c = snapshot.capabilities;
     let custom_files = presentation.as_mut().and_then(|p| p.files.take());
+    let drafts = presentation.as_mut().and_then(|p| p.drafts.take());
+    let drafts_band = drafts.as_ref().map_or(0., |(_, height)| height.max(0.));
     let has_files = custom_files.is_some() || !snapshot.files.is_empty();
-    let band = if has_files { row_geometry::FILES_BAND } else { 0. };
+    let files_band = if has_files { row_geometry::FILES_BAND } else { 0. };
+    let band = files_band + drafts_band;
     let editor_height = (p.h as f32
         - band
         - spec::TOP_EXTENSION
@@ -287,11 +293,22 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         .w(px(width))
         .h(px(height))
         .child(content)
+        .when_some(drafts, |v, (drafts, height)| {
+            v.child(
+                positioned(
+                    p.left() + TEXT_INSET as f64,
+                    p.top() + (spec::TOP_EXTENSION + spec::EDITOR_TOP_INSET) as f64,
+                    p.w - 2. * TEXT_INSET as f64,
+                    height as f64,
+                )
+                .child(drafts),
+            )
+        })
         .when_some(files_row, |v, row| {
             v.child(
                 positioned(
                     p.left() + inset,
-                    p.top() + inset,
+                    p.top() + inset + drafts_band as f64,
                     row_width,
                     row_geometry::CHIP_HEIGHT as f64,
                 )

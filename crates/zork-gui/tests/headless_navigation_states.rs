@@ -268,6 +268,7 @@ fn chat_hover_checks() -> anyhow::Result<()> {
         chats: Arc::new(vec![chat("chat-0"), chat("chat-1")]),
         selected_session: Some("chat-0".into()),
         chatting: true,
+        local: true,
     };
     let mut cx = HeadlessAppContext::with_platform(
         gpui_platform::current_platform(true).text_system(),

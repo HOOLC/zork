@@ -99,8 +99,8 @@ impl RootView {
     }
     pub(super) fn restore_draft(&mut self, cx: &mut Context<Self>) {
         self.comment_popover = None;
-        self.comment_editor
-            .update(cx, |editor, cx| editor.reset(cx));
+        self.draft_inputs.clear();
+        self.focus_draft = None;
         self.composer_surface.scene = Default::default();
         self.close_conversation_artifact();
         self.transcript_selection.borrow_mut().clear();
@@ -158,6 +158,12 @@ impl RootView {
                 // The core draft subscription publishes the cleared text and
                 // attachments together. Do not race it with a second UI write.
                 self.refresh_queued();
+            }
+            // Core refuses quote passages without their own reply.
+            Err(error)
+                if error.to_string() == zork_client_core::state::EMPTY_COMMENT_REPLY =>
+            {
+                self.refuse_empty_draft_reply(cx)
             }
             Err(error) => self.error = Some(format!("保存待发送消息失败：{error}")),
         }

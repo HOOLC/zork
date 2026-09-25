@@ -22,7 +22,26 @@ impl RootView {
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         use zork_ui::components::widgets::{composer as component, Pose};
+        // Draft quotes sit in the composer in the sent-message shape; the main
+        // input then reads "补充说明（可选）".
+        let drafts = self.render_drafts(window, cx);
+        let extra = drafts.is_some();
+        if extra != self.extra_placeholder {
+            self.extra_placeholder = extra;
+            let placeholder = self
+                .locale
+                .text(if extra {
+                    "draft_extra_placeholder"
+                } else {
+                    "composer_placeholder"
+                })
+                .to_owned();
+            self.composer_input
+                .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+        }
+        let drafts_band = drafts.as_ref().map_or(0., |(_, height)| *height);
         let height = self.composer_editor_height
+            + drafts_band
             + self.draft_files_band()
             + zork_ui::components::composer_layout::TOP_EXTENSION
             + zork_ui::components::composer_layout::COMPOSER_CHROME;
@@ -80,6 +99,7 @@ impl RootView {
                     show_attach: true,
                     primary_id: "send-button".into(),
                     files,
+                    drafts,
                     busy: self.canceling,
                     editor_label: self.locale.text("composer_placeholder").into(),
                     attach_label: self.locale.text("add_files").into(),

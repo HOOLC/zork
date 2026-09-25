@@ -51,6 +51,8 @@ pub struct Device {
     pub chats: Arc<Vec<NavigationChat>>,
     pub selected_session: Option<String>,
     pub chatting: bool,
+    /// This client's own Station: its Chats' meta line shows only the time.
+    pub local: bool,
 }
 impl Device {
     pub fn device_name(&self) -> crate::device_name::DeviceName {
@@ -68,6 +70,7 @@ impl Device {
             && self.public == other.public
             && self.selected_session == other.selected_session
             && self.chatting == other.chatting
+            && self.local == other.local
             && Arc::ptr_eq(&self.chats, &other.chats)
     }
 }
@@ -84,6 +87,15 @@ pub struct Navigation {
     brand: Option<gpui::Entity<crate::components::brand::Brand>>,
     tabs: TabGroup,
     details_overlay: Option<gpui::Entity<crate::components::tooltip::DetailsOverlay>>,
+    time_format: TimeFormat,
+    refresh: Option<(std::time::Instant, gpui::Task<()>)>,
+}
+/// Relative label of a Chat's `updated_at` (core `message_time`) and the
+/// milliseconds until it changes. Injected by the host.
+pub type TimeFormat = std::rc::Rc<dyn Fn(&str) -> (String, Option<i64>)>;
+/// Fallback when no formatter is injected: the clock time.
+fn clock_label(updated: &str) -> (String, Option<i64>) {
+    (updated.get(11..16).unwrap_or_default().to_owned(), None)
 }
 impl gpui::EventEmitter<Action> for Navigation {}
 impl Navigation {
@@ -101,7 +113,31 @@ impl Navigation {
             brand: None,
             tabs: TabGroup::new(cx),
             details_overlay: None,
+            time_format: std::rc::Rc::new(clock_label),
+            refresh: None,
         }
+    }
+    /// Relative time labels for the meta line (core `message_time`).
+    pub fn set_time_format(&mut self, format: TimeFormat, cx: &mut Context<Self>) {
+        self.time_format = format;
+        crate::components::region::invalidate(cx, &["chats"]);
+    }
+    /// Repaints the list when the earliest time label changes.
+    fn schedule_refresh(&mut self, wait_ms: i64, cx: &mut Context<Self>) {
+        let due = std::time::Instant::now() + std::time::Duration::from_millis(wait_ms.max(250) as u64);
+        if self.refresh.as_ref().is_some_and(|(pending, _)| *pending <= due) {
+            return;
+        }
+        let task = cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(wait_ms.max(250) as u64))
+                .await;
+            let _ = this.update(cx, |v, cx| {
+                v.refresh = None;
+                crate::components::region::invalidate(cx, &["chats"]);
+            });
+        });
+        self.refresh = Some((due, task));
     }
     pub fn set_data(
         &mut self,
@@ -214,7 +250,20 @@ impl Navigation {
             self.active.as_deref() == Some(device.id.as_str()) && device.selected_session.is_none()
         })
     }
-    fn chat_list(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn chat_list(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let mut next_change: Option<i64> = None;
+        let list = self.chat_list_rows(&mut next_change, window, cx);
+        if let Some(wait) = next_change {
+            self.schedule_refresh(wait, cx);
+        }
+        list
+    }
+    fn chat_list_rows(
+        &self,
+        next_change: &mut Option<i64>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let mut chats: Vec<_> = self
             .devices
             .iter()
@@ -247,7 +296,11 @@ impl Navigation {
                 previous = label.clone();
                 list = list.child(self.day_header(label));
             }
-            list = list.child(self.chat_row(device, chat, window, cx));
+            let (when, wait) = (self.time_format)(&chat.updated_at);
+            if let Some(wait) = wait {
+                *next_change = Some(next_change.map_or(wait, |known| known.min(wait)));
+            }
+            list = list.child(self.chat_row(device, chat, when, window, cx));
         }
         list
     }
@@ -284,6 +337,7 @@ impl Navigation {
         &self,
         device: &Device,
         chat: &NavigationChat,
+        when: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -319,7 +373,7 @@ impl Navigation {
         let archive_chat = chat.chat_id.clone();
         let archived = !chat.archived;
         let expected_message_count = chat.message_count;
-        let label = format!("{title}, {meta}");
+        let label = format!("{title}, {meta}, {when}");
         let radius = crate::controls::FIELD_RADIUS;
         let row_id = format!("chat-{}-{}", device.id, chat.chat_id);
         let action_id = format!("archive-{row_id}");
@@ -398,7 +452,7 @@ impl Navigation {
             .id(format!("hover-shell-{action_id}"))
             .absolute()
             .right(px(8.))
-            .top(px(6.))
+            .top(px((ROW_HEIGHT - 20.) / 2.))
             .size(px(20.))
             .on_hover(cx.listener(move |v, hovered: &bool, _, cx| {
                 let next = (*hovered).then(|| action_hover_id.clone());
@@ -413,18 +467,84 @@ impl Navigation {
                     .min_width(80.)
                     .focus_handle(&action_focus),
             );
+        let ring = if selected {
+            ZORK_UI.palette.selected
+        } else {
+            ZORK_UI.palette.sidebar
+        };
+        let device_tip = self
+            .locale
+            .text("chat_on_device")
+            .replace("{name}", &device.name);
+        let meta = div()
+            .id(format!("chat-meta-{}-{}", device.id, chat.chat_id))
+            .mt(px(2.))
+            .h(px(18.))
+            .min_w_0()
+            .pr(px(20.))
+            .flex()
+            .items_center()
+            .gap(px(3.))
+            .text_size(px(11.5))
+            .line_height(px(18.))
+            .text_color(rgb(ZORK_UI.palette.subtle))
+            .map(|v| {
+                let discs: Vec<crate::components::message_row::Disc> = chat
+                    .avatar
+                    .agents
+                    .iter()
+                    .map(|agent| crate::components::message_row::Disc {
+                        tint: agent.tint,
+                        maker: agent.maker.clone(),
+                        initial: agent.initial.clone(),
+                    })
+                    .collect();
+                if discs.is_empty() && chat.avatar.more == 0 {
+                    // A Chat without agent authors keeps the plain Chat mark.
+                    v.child(
+                        ui::icon("icons/message-square.svg", 14.)
+                            .text_color(rgb(ZORK_UI.palette.subtle))
+                            .mr(px(3.)),
+                    )
+                } else {
+                    v.child(div().mr(px(4.)).child(
+                        crate::components::message_row::identity::stack(
+                            &discs,
+                            chat.avatar.more,
+                            16.,
+                            5.,
+                            ring,
+                        ),
+                    ))
+                }
+            })
+            .when(!device.local, |v| {
+                let has_time = !when.is_empty();
+                v.child(crate::components::tooltip::hint(
+                    div()
+                        .id(format!("chat-device-{}-{}", device.id, chat.chat_id))
+                        .flex_shrink_0()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .child(device.name.clone())
+                        .automation(AutomationRole::Status, device_tip.clone()),
+                    format!("chat-device-{}-{}", device.id, chat.chat_id),
+                    device_tip,
+                ))
+                .when(has_time, |v| v.child(div().flex_shrink_0().child("·")))
+            })
+            .child(div().flex_shrink_0().whitespace_nowrap().child(when.clone()));
         let row = div()
             .id(row_id.clone())
             .track_focus(&row_focus)
             .tab_stop(true)
             .relative()
             .w_full()
-            .h(px(crate::controls::CONTROL_HEIGHT))
+            .h(px(ROW_HEIGHT))
             .pl(px(10.))
             .pr(px(12.))
             .flex()
-            .items_center()
-            .gap(px(8.))
+            .flex_col()
+            .justify_center()
             .cursor_pointer()
             .rounded(px(radius))
             .when(!selected, |row| {
@@ -439,19 +559,12 @@ impl Navigation {
                     .hover(|row| row.bg(rgb(crate::design::INTERACTION.selected_hover)))
                     .focus_visible(|row| row.shadow(crate::controls::focus_ring()))
             })
-            // One capsule line: the execution device's mark, then the title. The
-            // device's reachability lives in the device dock and the details tooltip.
-            .child(crate::device_name::mark_keyed(
-                &device.name,
-                &device
-                    .color
-                    .clone()
-                    .unwrap_or_else(|| crate::device_name::color_key(&device.name)),
-                18.,
-            ))
+            // Two lines of uniform height: the title alone gets the full width;
+            // the muted meta line starts at the content edge with the Chat's
+            // small avatar stack, then the device (remote Chats only) and time.
             .child(
                 div()
-                    .flex_1()
+                    .w_full()
                     .min_w_0()
                     .text_size(px(13.))
                     .line_height(px(20.))
@@ -459,6 +572,7 @@ impl Navigation {
                     .pr(px(20.))
                     .child(title.clone()),
             )
+            .child(meta)
             .child(archive_action)
             .when_some(chat.archive_error.clone(), |row, error| {
                 row.child(
@@ -478,7 +592,7 @@ impl Navigation {
                         .opacity(if show_icon { 0. } else { 1. })
                         .absolute()
                         .right(px(14.))
-                        .top(px(13.))
+                        .top(px((ROW_HEIGHT - 6.) / 2.))
                         .size(px(6.))
                         .rounded_full()
                         .bg(rgb(ZORK_UI.palette.text)),
@@ -527,6 +641,8 @@ impl Navigation {
             .child(row)
     }
 }
+/// Chat rows: a 20 px title line and an 18 px meta line with 6 px padding.
+const ROW_HEIGHT: f32 = 52.;
 fn calendar_day(value: &str) -> Option<(i32, u32, u32)> {
     let bytes = value.as_bytes();
     if bytes.len() < 10 || bytes[4] != b'-' || bytes[7] != b'-' {

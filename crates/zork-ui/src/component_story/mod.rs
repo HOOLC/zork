@@ -164,6 +164,12 @@ pub struct ConversationComposer {
     input: Entity<crate::components::text_input::ComposerInput>,
     scene: crate::components::widgets::composer::Scene,
     width: f32,
+    /// Draft comments shown in the sent-message shape above the editor.
+    drafts: Vec<(
+        crate::comments::DraftComment,
+        crate::components::message_row::QuoteAuthor,
+        Entity<crate::components::text_input::ComposerInput>,
+    )>,
 }
 impl ConversationComposer {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -175,7 +181,43 @@ impl ConversationComposer {
             input,
             scene: Default::default(),
             width: 480.,
+            drafts: Vec::new(),
         }
+    }
+    /// The composer with draft comments: (source author, passage, reply).
+    pub fn with_drafts(
+        drafts: Vec<(crate::components::message_row::QuoteAuthor, String, String)>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        use crate::components::text_input::{ComposerInput, ComposerLayoutChanged};
+        let text = crate::components::comments::DraftText::default();
+        let mut this = Self::new(cx);
+        this.input.update(cx, |input, cx| {
+            input.set_placeholder(text.extra_placeholder.clone(), cx)
+        });
+        for (index, (author, quote, reply)) in drafts.into_iter().enumerate() {
+            let input = cx.new(|cx| {
+                ComposerInput::new(text.reply_placeholder.clone(), cx).multiline()
+            });
+            input.update(cx, |input, cx| input.reset_value(reply.clone(), cx));
+            cx.subscribe(&input, |_, _, _: &ComposerLayoutChanged, cx| cx.notify())
+                .detach();
+            this.drafts.push((
+                crate::comments::DraftComment {
+                    id: format!("draft-{index}"),
+                    source: crate::comments::CommentSource {
+                        session_id: "story".into(),
+                        author: Some(author.name.clone()),
+                        quote,
+                        ..Default::default()
+                    },
+                    comment: reply,
+                },
+                author,
+                input,
+            ));
+        }
+        this
     }
 }
 impl Render for ConversationComposer {
@@ -184,12 +226,43 @@ impl Render for ConversationComposer {
             composer_layout as layout,
             widgets::{composer, Pose},
         };
+        let drafts_band = crate::components::comments::drafts_height(
+            self.drafts
+                .iter()
+                .map(|(_, _, input)| crate::components::comments::draft_input_height(input.read(cx))),
+        );
+        let drafts = (!self.drafts.is_empty()).then(|| {
+            let views = self
+                .drafts
+                .iter()
+                .map(|(comment, author, input)| crate::components::comments::DraftView {
+                    comment: comment.clone(),
+                    author: author.clone(),
+                    input: input.clone(),
+                })
+                .collect();
+            (
+                crate::components::comments::drafts(
+                    "",
+                    views,
+                    &crate::components::comments::DraftText::default().remove,
+                    cx,
+                    |_, _, _, _| {},
+                    |v: &mut Self, id, cx| {
+                        v.drafts.retain(|(comment, _, _)| comment.id != id);
+                        cx.notify();
+                    },
+                ),
+                drafts_band,
+            )
+        });
         let height = self
             .input
             .read(cx)
             .content_height()
             .unwrap_or(composer::EDITOR_MIN)
-            .clamp(48., composer::EDITOR_MAX)
+            .clamp(if drafts.is_some() { 24. } else { 48. }, composer::EDITOR_MAX)
+            + drafts_band
             + layout::TOP_EXTENSION
             + layout::COMPOSER_CHROME;
         self.scene.frame(Pose::rect(
@@ -234,6 +307,7 @@ impl Render for ConversationComposer {
                     show_attach: true,
                     primary_id: "send-button".into(),
                     files: None,
+                    drafts,
                     busy: false,
                     editor_label: "输入消息".into(),
                     attach_label: "添加文件".into(),

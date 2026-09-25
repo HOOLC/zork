@@ -22,6 +22,7 @@ fn sample(start: usize, name: &str, model: &str, state: &str) -> Device {
             },
             in_preview: true,
             unread: state == "unread" && i == start,
+            avatar: avatar(i),
             ..Default::default()
         })
         .collect();
@@ -41,12 +42,52 @@ fn sample(start: usize, name: &str, model: &str, state: &str) -> Device {
         chats: Arc::new(chats),
         selected_session: (start == 0).then(|| "chat-0".into()),
         chatting: start == 0,
+        // The first device is this client's own Station: its rows show the time only.
+        local: start == 0,
+    }
+}
+/// Stacked agent avatars (maker marks in tint discs): one, two, three and
+/// four-or-more agents, and a Chat without agent authors.
+fn avatar(i: usize) -> zork_client_types::navigation::ChatAvatar {
+    use zork_client_types::navigation::{AgentAvatar, ChatAvatar};
+    let agent = |id: &str, maker: Option<&str>, tint: usize, initial: &str| AgentAvatar {
+        agent_id: id.into(),
+        maker: maker.map(str::to_owned),
+        tint,
+        initial: initial.into(),
+    };
+    let planner = agent("planner", Some("openai"), 0, "P");
+    let builder = agent("builder", Some("deepseek"), 2, "B");
+    let review = agent("review", Some("anthropic"), 3, "审");
+    let tester = agent("tester", None, 1, "T");
+    match i % 6 {
+        0 => ChatAvatar {
+            agents: vec![planner, builder, review],
+            more: 0,
+        },
+        1 => ChatAvatar {
+            agents: vec![builder],
+            more: 0,
+        },
+        2 => ChatAvatar {
+            agents: vec![tester, planner, review],
+            more: 2,
+        },
+        3 => ChatAvatar::default(),
+        4 => ChatAvatar {
+            agents: vec![planner, review],
+            more: 0,
+        },
+        _ => ChatAvatar {
+            agents: vec![review],
+            more: 0,
+        },
     }
 }
 pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navigation> {
     let devices = vec![
         sample(0, "本机", "deepseek-flash", state),
-        sample(3, "Studio", "gpt-5.4", state),
+        sample(3, "B", "gpt-5.4", state),
     ];
     let view = cx.new(|cx| {
         let mut view = Navigation::new(text, cx);

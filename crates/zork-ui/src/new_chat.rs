@@ -454,6 +454,7 @@ impl Render for Page {
                     attach_id: "new-chat-attach".into(),
                     primary_id: "new-chat-send".into(),
                     files: None,
+                    drafts: None,
                     busy: self.data.busy,
                     editor_label: self.text.text("composer_placeholder").into(),
                     attach_label: String::new().into(),

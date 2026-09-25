@@ -77,7 +77,7 @@ fn placement(family: &str) -> Option<(&'static str, &'static str, &'static str)>
         "brand" | "icons" | "providers" => ("基础控件", "icons-brand", "图标与品牌"),
         "conversation" => ("对话", "conversation", "会话"),
         "markdown" => ("对话", "markdown", "消息正文"),
-        "multi-agent" => ("对话", "multi-agent", "多 Agent 消息（设计稿）"),
+        "multi-agent" => ("对话", "multi-agent", "多 Agent 消息"),
         "comments" => ("对话", "comments", "文字评论"),
         "activity" => ("对话", "activity", "会话动态"),
         "message-interaction" => ("对话", "message-interaction", "交互卡片"),
@@ -140,15 +140,15 @@ fn label(family: &str, state: &str) -> String {
         ("brand", state) => format!("品牌 · {}", state_label(state)),
         ("conversation", "history") => "执行历史".into(),
         ("multi-agent", "conversation") => "多 Agent 对话".into(),
+        ("multi-agent", "comment-batch") => "发出的引用回复".into(),
         ("multi-agent", "run-hover") => "同一 Agent 连续消息 · 悬停时间".into(),
-        ("multi-agent", "reply-offscreen") => "回复 · 原消息不在视野".into(),
-        ("multi-agent", "reply-highlight") => "回复 · 跳转后高亮".into(),
-        ("multi-agent", "reply-edge-cases") => "回复 · 边界情况".into(),
-        ("multi-agent", "relative-times") => "相对时间".into(),
         ("multi-agent", "time-hover") => "相对时间 · 悬停完整时间".into(),
-        ("multi-agent", "phone") => "手机宽度 · 对话".into(),
-        ("multi-agent", "phone-reply") => "手机宽度 · 回复引用".into(),
-        ("multi-agent", "phone-time-hold") => "手机宽度 · 长按完整时间".into(),
+        ("multi-agent", "reply-jump") => "点击引用 · 跳转并标记原文".into(),
+        ("multi-agent", "not-loaded") => "引用 · 原消息尚未加载".into(),
+        ("multi-agent", "loaded") => "引用 · 第一次点击只加载".into(),
+        ("multi-agent", "drafts") => "引用回复 · 草稿".into(),
+        ("multi-agent", "seven-agents") => "7 个 Agent · 色盘重复".into(),
+        ("multi-agent", "phone") => "手机宽度".into(),
         ("activity", "collapsed") => "收起".into(),
         ("activity", "expanded") => "展开".into(),
         ("activity", "live") => "实时（动效演示）".into(),
@@ -592,22 +592,20 @@ fn raw_catalog() -> Vec<Story> {
             items.push(story);
         }
     }
-    // Design concept for Chats shared by several agents; not wired into the transcript.
+    // Chats shared by several agents, drawn from core's message presentation.
     for (state, width, height) in zork_ui::components::message_row::multi_agent::STATES {
         let mut story = Story::new(
             "multi-agent",
-            "多 Agent 消息（设计稿）",
+            "多 Agent 消息",
             state,
             "crates/zork-ui/src/components/message_row/multi_agent.rs + message_row/identity.rs",
             "multi-agent",
         );
         story.width = width;
         story.height = height;
-        if let Some(target) = zork_ui::components::message_row::multi_agent::hover_target(state) {
-            story
-                .actions
-                .push(json!({"type":"move","target":{"element_id":target}}));
-        }
+        story
+            .actions
+            .extend(zork_ui::components::message_row::multi_agent::actions(state));
         items.push(story);
     }
     for state in ["long", "loading", "empty", "offline", "error"] {
@@ -1012,14 +1010,23 @@ impl StoryHost {
                     )
                 })
                 .into(),
-            "chat-navigation" => zork_ui::chat_navigation::stories::create(
-                &story.state,
-                zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                    crate::i18n::Locale::ZhCn.text(key).into()
-                })),
-                cx,
-            )
-            .into(),
+            "chat-navigation" => {
+                let view = zork_ui::chat_navigation::stories::create(
+                    &story.state,
+                    zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                        crate::i18n::Locale::ZhCn.text(key).into()
+                    })),
+                    cx,
+                );
+                // The meta line's relative time comes from core `message_time`.
+                view.update(cx, |view, cx| {
+                    view.set_time_format(
+                        super::navigation::chat_time_format(crate::i18n::Locale::ZhCn),
+                        cx,
+                    )
+                });
+                view.into()
+            }
             "resources" => zork_ui::resources::stories::create(
                 &story.state,
                 zork_ui::resources::Text(std::rc::Rc::new(|key| {
@@ -1070,14 +1077,12 @@ impl StoryHost {
                 .into(),
             "multi-agent" => zork_ui::components::message_row::multi_agent::create(
                 &story.state,
-                std::rc::Rc::new(|at: &str| {
-                    use zork_client_core::message_time::{format_rfc3339, TimeLocale};
-                    // A fixed clock keeps the concept's labels stable.
-                    let now = chrono::DateTime::parse_from_rfc3339("2026-09-26T14:30:00+08:00")
-                        .expect("fixture clock");
-                    format_rfc3339(at, now, TimeLocale::ZhCn)
-                        .map(|time| (time.label, time.full))
-                        .unwrap_or_else(|| (at.to_owned(), at.to_owned()))
+                std::rc::Rc::new(|request: serde_json::Value| {
+                    // The same JSON bridge Android uses; every rule is core's.
+                    serde_json::from_value(request)
+                        .map_err(anyhow::Error::from)
+                        .and_then(zork_client_core::message_presentation::handle)
+                        .unwrap_or_default()
                 }),
                 cx,
             )

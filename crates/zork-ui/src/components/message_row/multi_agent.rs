@@ -1,47 +1,43 @@
-//! Design concept: several agents sharing one Chat, with reply quotes and
-//! relative times. Fixture data only; the live transcript is not wired yet.
+//! Several agents sharing one Chat: identity discs with maker marks, groups,
+//! relative times, header-line reply quotes with the omission rule, not-loaded
+//! originals, the jump wash, sent comment batches and draft quotes.
+//!
+//! Every rule comes from core: the host injects [`Present`], which runs
+//! `zork_client_core::message_presentation::handle` (the same JSON bridge
+//! Android uses). The fixture follows the approved prototype's thread.
 use super::{
-    identity::{AgentIdentity, Grouping, QuoteAuthor, Reply, ReplyText},
-    Decorations, Row,
+    identity::{self, ReplyText},
+    presentation::{self, RowHeights},
+    CommentPairView, CommentsView, Decorations, Row,
 };
-use crate::components::message::MessageDocument;
-use gpui::{div, point, prelude::*, px, Context, Entity, ScrollHandle, Window};
-use std::rc::Rc;
+use crate::components::message::{MarkKind, MessageDocument, TextMarks};
+use gpui::{div, point, prelude::*, px, rgb, Context, Entity, ScrollHandle, Window};
+use serde_json::{json, Value};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
-/// Formats an RFC 3339 instant as (label, full timestamp). The desktop host
-/// injects `zork_client_core::message_time` with a fixed clock.
-pub type TimeFormat = Rc<dyn Fn(&str) -> (String, String)>;
+/// Runs core's presentation over a request
+/// `{rows, now_ms, utc_offset_minutes, locale, has_older, devices, agent_models}`.
+pub type Present = Rc<dyn Fn(Value) -> Value>;
 
-/// Every state in the concept, with its story size (width, height).
+/// Every state, with its story size (width, height).
 pub const STATES: [(&str, f32, f32); 10] = [
-    ("conversation", 900., 700.),
-    ("run-hover", 900., 700.),
-    ("reply-offscreen", 900., 720.),
-    ("reply-highlight", 900., 720.),
-    ("reply-edge-cases", 900., 700.),
-    ("relative-times", 900., 540.),
-    ("time-hover", 900., 540.),
+    ("conversation", 1000., 760.),
+    ("comment-batch", 1000., 760.),
+    ("run-hover", 1000., 760.),
+    ("time-hover", 1000., 760.),
+    ("reply-jump", 1000., 760.),
+    ("not-loaded", 1000., 560.),
+    ("loaded", 1000., 560.),
+    ("drafts", 1000., 820.),
+    ("seven-agents", 1000., 760.),
     ("phone", 390., 820.),
-    ("phone-reply", 390., 780.),
-    ("phone-time-hold", 390., 560.),
 ];
 
-/// Stories whose preview hovers a time label to show its full timestamp.
-pub fn hover_target(state: &str) -> Option<&'static str> {
-    match state {
-        "time-hover" | "phone-time-hold" => Some("message-3-time"),
-        // The second message of 审阅助手's run: its own time appears on hover.
-        "run-hover" => Some("message-5-run-time"),
-        _ => None,
-    }
-}
-
-/// Messages that follow within this window join the previous message's group.
-const GROUP_WINDOW_SECONDS: i64 = 5 * 60;
-/// An original this close above its reply is on screen in practice: it gets
-/// the marker. The rule counts messages, not the live viewport, so a row never
-/// changes height while the reader scrolls.
-const MARKER_DISTANCE: usize = 3;
+/// The fixture clock: 2026-09-26 14:30:00 +08:00.
+const NOW_MS: i64 = 1_790_404_200_000;
+const PHONE_WIDTH: f32 = 480.;
+const WASH_HOLD: Duration = Duration::from_millis(1600);
+const WASH_FADE: Duration = Duration::from_millis(600);
 
 struct Agent {
     id: &'static str,
@@ -49,330 +45,453 @@ struct Agent {
     device: &'static str,
     model: &'static str,
 }
-const AGENTS: [Agent; 3] = [
+const AGENTS: [Agent; 7] = [
     Agent {
-        id: "agent-planner",
+        id: "planner",
         name: "Planner",
-        device: "MacBook Air",
-        model: "gpt-6",
+        device: "dev-a",
+        model: "gpt-6-astra",
     },
     Agent {
-        id: "agent-reviewer",
-        name: "审阅助手",
-        device: "mini1",
-        model: "claude-opus-5",
-    },
-    Agent {
-        id: "agent-builder",
+        id: "builder",
         name: "Builder",
-        device: "mini1",
-        model: "gpt-6-codex",
+        device: "dev-b",
+        model: "deepseek-flash",
+    },
+    Agent {
+        id: "review",
+        name: "审阅助手",
+        device: "dev-b",
+        model: "claude-sonnet-5",
+    },
+    Agent {
+        id: "tester",
+        name: "Tester",
+        device: "dev-c",
+        model: "glm-5.1",
+    },
+    Agent {
+        id: "docs",
+        name: "文档",
+        device: "dev-a",
+        model: "qwen3.6-plus",
+    },
+    Agent {
+        id: "ops",
+        name: "Ops",
+        device: "dev-c",
+        model: "kimi-k2.6",
+    },
+    Agent {
+        id: "design",
+        name: "Designer",
+        device: "dev-b",
+        model: "gemini-3-pro",
     },
 ];
-const PLANNER: Option<usize> = Some(0);
-const REVIEWER: Option<usize> = Some(1);
-const BUILDER: Option<usize> = Some(2);
-const USER: Option<usize> = None;
 
-#[derive(Clone)]
-enum ReplySpec {
-    To(&'static str),
-    Deleted(Option<usize>),
-    NotLoaded,
-    Loading,
-    Long(usize, &'static str),
+fn row(id: &str, who: &str, at: &str, text: &str) -> Value {
+    let mut value = json!({"type": "message", "id": id, "created_at": at, "content": text});
+    match AGENTS.iter().find(|agent| agent.id == who) {
+        Some(agent) => {
+            value["role"] = json!("assistant");
+            value["author_agent_id"] = json!(agent.id);
+            value["author_name"] = json!(agent.name);
+            value["device"] = json!(agent.device);
+            value["model"] = json!(agent.model);
+        }
+        None => value["role"] = json!("user"),
+    }
+    value
+}
+fn reply(mut value: Value, to: &str, quote: Option<(&str, &str)>) -> Value {
+    value["reply_to"] = json!(to);
+    if let Some((text, kind)) = quote {
+        value["quote"] = json!(text);
+        value["quote_kind"] = json!(kind);
+    }
+    value
+}
+fn batch(id: &str, at: &str, pairs: &[(&str, &str, &str, &str)], extra: &str) -> Value {
+    use zork_client_types::comments::{compose, CommentSource, DraftComment};
+    let comments: Vec<DraftComment> = pairs
+        .iter()
+        .enumerate()
+        .map(|(index, (source, agent, quote, reply))| DraftComment {
+            id: format!("{id}-{index}"),
+            source: CommentSource {
+                session_id: "story".into(),
+                message_id: Some((*source).into()),
+                author: AGENTS
+                    .iter()
+                    .find(|a| a.id == *agent)
+                    .map(|a| a.name.to_owned()),
+                author_agent_id: Some((*agent).into()),
+                quote: (*quote).into(),
+            },
+            comment: (*reply).into(),
+        })
+        .collect();
+    row(id, "user", at, &compose(extra, &comments))
 }
 
-#[derive(Clone)]
-struct Message {
-    id: &'static str,
-    author: Option<usize>,
-    at: &'static str,
-    body: &'static str,
-    reply: Option<ReplySpec>,
+fn earlier() -> Vec<Value> {
+    vec![
+        row(
+            "old1",
+            "user",
+            "2026-09-17T12:30:00+08:00",
+            "上周的登录埋点口径先定下来：点击和展开分开统计。",
+        ),
+        row(
+            "old2",
+            "planner",
+            "2026-09-17T12:33:00+08:00",
+            "收到，口径写进了 `docs/metrics.md`，后续改版沿用。",
+        ),
+    ]
 }
-fn m(id: &'static str, author: Option<usize>, at: &'static str, body: &'static str) -> Message {
-    Message {
-        id,
-        author,
-        at,
-        body,
-        reply: None,
+
+fn thread() -> Vec<Value> {
+    vec![
+        row("c1", "user", "2026-09-25T12:30:00+08:00", "@Planner 把登录页改版拆成任务，审阅助手和 Builder 一起跟进。"),
+        row("c2", "planner", "2026-09-25T12:34:00+08:00", "好的，拆成三步：\n\n1. 梳理现有登录流程和埋点\n2. 出新版布局与文案\n3. 实现并补测试\n\n我先做第 1 步，Builder 可以先搭页面骨架。"),
+        row("criteria", "planner", "2026-09-25T12:35:00+08:00", "验收标准：首屏只保留账号、密码和一个主按钮；错误提示贴在对应字段下方，不弹窗；键盘可以走完全部流程，焦点顺序与视觉顺序一致；深色主题逐项核对对比度。"),
+        row("c4", "builder", "2026-09-25T13:30:00+08:00", "骨架已推到 `ud/login-refresh`，表单和按钮先复用现有组件。"),
+        reply(row("c5", "review", "2026-09-25T14:30:00+08:00", "看过了：密码框缺少显示/隐藏切换，错误提示的对比度也不够。建议直接用 `field_with_error`，焦点和错误态它都处理好了。"), "c4", Some(("表单和按钮先复用现有组件", "excerpt"))),
+        row("c6", "user", "2026-09-25T15:30:00+08:00", "按审阅意见改，改完叫我看。"),
+        reply(row("c7", "builder", "2026-09-26T09:30:00+08:00", "已改：加了显示切换，错误提示换成 `field_with_error`。截图放在 Chat 文件里了。"), "c5", Some(("密码框缺少显示/隐藏切换，错误提示对比度不够", "summary"))),
+        row("c8", "builder", "2026-09-26T09:32:00+08:00", "顺便把主按钮换成炭墨主操作样式，发送中的状态沿用按钮内的加载反馈。"),
+        row("spacing", "review", "2026-09-26T11:30:00+08:00", "布局看过了。「忘记密码」链接离主按钮太近，触控区重叠，建议下移 8 px。"),
+        row("c10", "user", "2026-09-26T12:00:00+08:00", "同意，顺便把第三方登录收进「更多方式」。"),
+        row("c11", "builder", "2026-09-26T12:30:00+08:00", "已调整间距，第三方登录收进了「更多方式」菜单，默认收起。"),
+        reply(row("c12", "planner", "2026-09-26T13:00:00+08:00", "埋点同步更新：登录方式的点击改为在菜单展开后上报，避免把展开误算成选择。"), "old2", Some(("上周定的埋点口径：点击和展开分开统计", "summary"))),
+        row("c13", "review", "2026-09-26T13:30:00+08:00", "菜单的键盘操作正常，Esc 能关闭并把焦点还给触发按钮。"),
+        row("c14", "builder", "2026-09-26T13:50:00+08:00", "深色主题的截图已更新到 Chat 文件。"),
+        batch(
+            "comments",
+            "2026-09-26T14:10:00+08:00",
+            &[
+                ("criteria", "planner", "错误提示贴在对应字段下方，不弹窗", "这条保留，但错误文案要写清楚怎么改，不要只说「格式错误」。"),
+                ("spacing", "review", "建议下移 8 px", "8 px 还是有点挤，试试 12 px。"),
+            ],
+            "其他都可以，按这个继续。",
+        ),
+        row("shortok", "review", "2026-09-26T14:14:00+08:00", "好。"),
+        reply(row("c17", "builder", "2026-09-26T14:16:00+08:00", "收到，两处都按你的意见改：错误文案改成具体的修改建议，链接下移 12 px。"), "comments", Some(("错误文案要具体；链接下移 12 px", "summary"))),
+        reply(row("c18", "planner", "2026-09-26T14:18:00+08:00", "有一条旧讨论被删了，按删除前的结论执行。"), "gone", None),
+        row("c19", "user", "2026-09-26T14:22:00+08:00", "文案这块交给 Planner 再过一遍。"),
+        reply(row("c20", "planner", "2026-09-26T14:23:00+08:00", "我来，顺便把审阅的「好」当作文案方向已确认。"), "shortok", None),
+        reply(row("c21", "review", "2026-09-26T14:27:00+08:00", "按最初的验收标准复查：焦点顺序已经正确；深色主题下错误提示的对比度只有 3.9:1，还差一点。"), "criteria", Some(("深色主题逐项核对对比度", "excerpt"))),
+        reply(row("c22", "builder", "2026-09-26T14:29:20+08:00", "对比度调到 4.8:1 了，其余不变。"), "c21", Some(("对比度只有 3.9:1", "excerpt"))),
+        row("notes", "user", "2026-09-26T14:29:30+08:00", "把这轮改动整理成发布说明，按页面分开写。"),
+        row("c24", "builder", "2026-09-26T14:29:35+08:00", "发布说明：\n\n1. 登录页：首屏只保留账号、密码和主按钮；第三方登录收进「更多方式」菜单，默认收起。\n2. 表单：密码框加显示/隐藏切换；错误提示贴在字段下方，文案给出具体修改建议。\n3. 间距：「忘记密码」链接下移 12 px，不再和主按钮的触控区重叠。\n4. 深色主题：错误提示对比度从 3.9:1 调到 4.8:1，其余颜色逐项核对通过。"),
+        row("c25", "builder", "2026-09-26T14:29:37+08:00", "迁移说明：旧的第三方登录按钮配置仍然有效，菜单会自动读取；埋点口径变化已同步给数据组，看板下周切换。"),
+        reply(row("c26", "builder", "2026-09-26T14:29:40+08:00", "以上是按页面整理好的发布说明，需要我直接发到发布频道吗？"), "notes", None),
+    ]
+}
+
+fn seven() -> Vec<Value> {
+    vec![
+        row(
+            "s1",
+            "tester",
+            "2026-09-26T13:55:00+08:00",
+            "端到端测试补了三条：错误提示、键盘流程、菜单收起。",
+        ),
+        row(
+            "s2",
+            "docs",
+            "2026-09-26T13:57:00+08:00",
+            "更新了登录帮助文档的截图和步骤说明。",
+        ),
+        row(
+            "s3",
+            "ops",
+            "2026-09-26T14:00:00+08:00",
+            "预发环境已部署改版分支，健康检查通过。",
+        ),
+        row(
+            "s4",
+            "design",
+            "2026-09-26T14:05:00+08:00",
+            "「更多方式」菜单的图标换成统一线条风格的版本了。",
+        ),
+    ]
+}
+
+/// Rows of a state, oldest first, and whether older history exists.
+fn fixture(state: &str, loaded: bool) -> (Vec<Value>, bool) {
+    match state {
+        // A short window whose first reply points into history not loaded yet.
+        "not-loaded" | "loaded" => {
+            let window: Vec<Value> = thread()
+                .into_iter()
+                .filter(|row| {
+                    ["c10", "c11", "c12", "c13", "c14"].contains(&row["id"].as_str().unwrap())
+                })
+                .collect();
+            if loaded {
+                (earlier().into_iter().chain(window).collect(), false)
+            } else {
+                (window, true)
+            }
+        }
+        // The thread up to the reply to the user's comment batch.
+        "comment-batch" => {
+            let mut rows: Vec<Value> = earlier().into_iter().chain(thread()).collect();
+            if let Some(end) = rows.iter().position(|row| row["id"] == "c17") {
+                rows.truncate(end + 1);
+            }
+            (rows, false)
+        }
+        "seven-agents" => {
+            let mut rows: Vec<Value> = earlier().into_iter().chain(thread()).collect();
+            let at = rows
+                .iter()
+                .position(|row| row["id"] == "comments")
+                .unwrap_or(rows.len());
+            for (offset, extra) in seven().into_iter().enumerate() {
+                rows.insert(at + offset, extra);
+            }
+            (rows, false)
+        }
+        _ => (earlier().into_iter().chain(thread()).collect(), false),
     }
 }
-impl Message {
-    fn reply(mut self, reply: ReplySpec) -> Self {
-        self.reply = Some(reply);
-        self
+
+fn request(rows: &[Value], has_older: bool) -> Value {
+    json!({
+        "rows": rows,
+        "now_ms": NOW_MS,
+        "utc_offset_minutes": 480,
+        "locale": "zh-CN",
+        "has_older": has_older,
+        "devices": {
+            "dev-a": {"display": "A", "machine": "zuozijiandeMacBook-Air"},
+            "dev-b": {"display": "B", "machine": "zuozijians-Mac-Studio"},
+            "dev-c": {"display": "C", "machine": "mini1"}
+        },
+        "agent_models": {}
+    })
+}
+
+fn index_of(state: &str, id: &str) -> usize {
+    let (rows, _) = fixture(state, false);
+    rows.iter().position(|row| row["id"] == id).unwrap_or(0)
+}
+
+/// Pointer actions a state's preview runs before the snapshot.
+pub fn actions(state: &str) -> Vec<Value> {
+    let target = |id: String| json!({"element_id": id});
+    match state {
+        // A later message of Builder's run reveals its own time on hover.
+        "run-hover" => vec![
+            json!({"type": "move", "target": target(format!("message-{}-run-time", index_of(state, "c25")))}),
+        ],
+        "time-hover" => vec![
+            json!({"type": "move", "target": target(format!("message-{}-time", index_of(state, "c21")))}),
+        ],
+        "reply-jump" => vec![
+            json!({"type": "click", "target": target(format!("message-{}-reply", index_of(state, "c21")))}),
+        ],
+        "loaded" => vec![
+            json!({"type": "click", "target": target(format!("message-{}-reply", index_of(state, "c12")))}),
+        ],
+        _ => vec![],
     }
 }
 
-fn conversation() -> Vec<Message> {
-    vec![
-        m(
-            "c0",
-            USER,
-            "2026-09-26T14:02:00+08:00",
-            "@Planner 把登录页改版拆成任务，审阅助手和 Builder 一起跟进。",
-        ),
-        m(
-            "c1",
-            PLANNER,
-            "2026-09-26T14:03:00+08:00",
-            "好的，拆成三步：\n\n1. 梳理现有登录流程和埋点\n2. 出新版布局与文案\n3. 实现并补测试",
-        ),
-        m(
-            "c2",
-            PLANNER,
-            "2026-09-26T14:04:00+08:00",
-            "我先做第 1 步，Builder 可以先搭页面骨架。",
-        ),
-        m(
-            "c3",
-            BUILDER,
-            "2026-09-26T14:11:00+08:00",
-            "骨架已推到 `ud/login-refresh`，表单和按钮先复用现有组件。",
-        ),
-        m(
-            "c4",
-            REVIEWER,
-            "2026-09-26T14:18:00+08:00",
-            "看过了：密码框缺少显示/隐藏切换，错误提示的对比度也不够。",
-        )
-        .reply(ReplySpec::To("c3")),
-        m(
-            "c5",
-            REVIEWER,
-            "2026-09-26T14:19:00+08:00",
-            "建议直接用 `field_with_error`，焦点和错误态它都处理好了。",
-        ),
-        m(
-            "c6",
-            USER,
-            "2026-09-26T14:24:00+08:00",
-            "按审阅意见改，改完叫我看。",
-        ),
-        m(
-            "c7",
-            BUILDER,
-            "2026-09-26T14:27:00+08:00",
-            "已改：加了显示切换，错误提示换成 `field_with_error`。",
-        )
-        .reply(ReplySpec::To("c4")),
-        m(
-            "c8",
-            BUILDER,
-            "2026-09-26T14:28:00+08:00",
-            "截图放在 Chat 文件里了。",
-        ),
-        m(
-            "c9",
-            PLANNER,
-            "2026-09-26T14:29:40+08:00",
-            "流程梳理完成：共 4 个入口、7 个埋点，清单在 `docs/login-flow.md`。",
-        ),
-    ]
-}
-
-fn long_thread() -> Vec<Message> {
-    vec![
-        m("t0", PLANNER, "2026-09-26T13:05:00+08:00", "登录页改版的验收标准：\n\n- 首屏只保留账号、密码和一个主按钮\n- 错误提示贴在对应字段下方，不弹窗\n- 键盘可以走完全部流程，焦点顺序与视觉顺序一致\n- 深色主题逐项核对对比度"),
-        m("t1", USER, "2026-09-26T13:06:00+08:00", "可以，按这个标准做。"),
-        m("t2", BUILDER, "2026-09-26T13:20:00+08:00", "开始实现表单布局，先把账号和密码字段换成共享组件。"),
-        m("t3", BUILDER, "2026-09-26T13:22:00+08:00", "主按钮用炭墨主操作样式，发送中的状态沿用按钮内的加载反馈，不另加遮罩。"),
-        m("t4", REVIEWER, "2026-09-26T13:40:00+08:00", "布局看过了。「忘记密码」链接离主按钮太近，触控区重叠，建议下移 8 px。"),
-        m("t5", USER, "2026-09-26T13:45:00+08:00", "同意，顺便把第三方登录收进「更多方式」。"),
-        m("t6", BUILDER, "2026-09-26T13:58:00+08:00", "已调整间距，第三方登录收进了「更多方式」菜单，默认收起。"),
-        m("t7", PLANNER, "2026-09-26T14:05:00+08:00", "埋点同步更新：登录方式的点击改为在菜单展开后上报，避免把展开误算成选择。"),
-        m("t8", REVIEWER, "2026-09-26T14:12:00+08:00", "菜单的键盘操作正常，Esc 能关闭并把焦点还给触发按钮。"),
-        m("t9", BUILDER, "2026-09-26T14:20:00+08:00", "深色主题的截图已更新到 Chat 文件。"),
-        m("t10", USER, "2026-09-26T14:26:00+08:00", "间距现在可以了，就按这个。").reply(ReplySpec::To("t4")),
-        m("t11", REVIEWER, "2026-09-26T14:29:00+08:00", "按最初的验收标准复查：焦点顺序已经正确；深色主题下错误提示的对比度只有 3.9:1，还差一点。").reply(ReplySpec::To("t0")),
-    ]
-}
-
-const LONG_ORIGINAL: &str = "关于登录页的整体方案，我整理了三部分：第一部分是入口，保留账号密码为主路径，第三方登录收进「更多方式」；第二部分是错误处理，所有错误都贴在字段下方并给出下一步；第三部分是埋点，展开菜单与选择方式分开上报，并补充失败原因的维度，方便之后按原因看转化。";
-
-fn edge_cases() -> Vec<Message> {
-    vec![
-        m(
-            "e0",
-            REVIEWER,
-            "2026-09-26T14:08:00+08:00",
-            "那条说明撤回了也没关系，我按现在的分支来审。",
-        )
-        .reply(ReplySpec::Deleted(BUILDER)),
-        m(
-            "e1",
-            PLANNER,
-            "2026-09-26T14:12:00+08:00",
-            "这是上周定下的方案，我按它继续拆任务。",
-        )
-        .reply(ReplySpec::NotLoaded),
-        m(
-            "e2",
-            BUILDER,
-            "2026-09-26T14:16:00+08:00",
-            "收到，照这个改。",
-        )
-        .reply(ReplySpec::Loading),
-        m(
-            "e3",
-            REVIEWER,
-            "2026-09-26T14:21:00+08:00",
-            "第二部分我同意；第三部分的失败原因维度需要先和数据那边确认口径。",
-        )
-        .reply(ReplySpec::Long(0, LONG_ORIGINAL)),
-        m("e4", USER, "2026-09-26T14:25:00+08:00", "好，就按这个来。")
-            .reply(ReplySpec::Long(0, LONG_ORIGINAL)),
-        m(
-            "e5",
-            BUILDER,
-            "2026-09-26T14:28:00+08:00",
-            "原消息删了，我先按当前分支继续。",
-        )
-        .reply(ReplySpec::Deleted(None)),
-    ]
-}
-
-fn relative_times() -> Vec<Message> {
-    vec![
-        m(
-            "r0",
-            PLANNER,
-            "2026-08-21T10:15:00+08:00",
-            "上个月的迭代复盘：登录转化率 61%，主要流失在第三方授权页。",
-        ),
-        m(
-            "r1",
-            USER,
-            "2026-09-03T16:20:00+08:00",
-            "这个月把登录页改版排进来。",
-        ),
-        m(
-            "r2",
-            BUILDER,
-            "2026-09-23T09:15:00+08:00",
-            "登录页骨架开始搭建。",
-        ),
-        m(
-            "r3",
-            REVIEWER,
-            "2026-09-25T18:40:00+08:00",
-            "骨架审完，意见写在 PR 里了。",
-        ),
-        m("r4", BUILDER, "2026-09-26T12:05:00+08:00", "按意见改完了。"),
-        m("r5", USER, "2026-09-26T14:27:00+08:00", "我看一下。"),
-        m(
-            "r6",
-            PLANNER,
-            "2026-09-26T14:29:50+08:00",
-            "验收清单已更新。",
-        ),
-    ]
+struct Wash {
+    row: usize,
+    passage: Option<std::ops::Range<usize>>,
+    started: std::time::Instant,
 }
 
 pub struct Story {
     state: String,
-    messages: Vec<Message>,
+    present: Present,
+    loaded: bool,
+    rows: Vec<Value>,
+    has_older: bool,
+    transcript: presentation::Transcript,
     documents: Vec<MessageDocument>,
-    tints: Vec<(String, usize)>,
+    texts: Vec<String>,
+    comments: Vec<Option<(Vec<Rc<MessageDocument>>, Option<Rc<MessageDocument>>)>>,
+    heights: Rc<RefCell<RowHeights>>,
     available_width: f32,
     scroll: ScrollHandle,
-    highlighted: Option<usize>,
     pending_jump: Option<usize>,
-    time: TimeFormat,
-    text: ReplyText,
+    pending_restore: Option<gpui::Pixels>,
+    wash: Option<Wash>,
+    hint: Option<String>,
+    composer: Option<Entity<crate::component_story::ConversationComposer>>,
+    drafts: Vec<(String, String)>,
 }
 
 impl Story {
-    pub fn new(state: &str, time: TimeFormat, cx: &mut Context<Self>) -> Self {
-        let _ = cx;
-        let messages = match state {
-            "reply-offscreen" | "reply-highlight" | "phone-reply" => long_thread(),
-            "reply-edge-cases" => edge_cases(),
-            "relative-times" | "time-hover" | "phone-time-hold" => relative_times(),
-            _ => conversation(),
+    pub fn new(state: &str, present: Present, cx: &mut Context<Self>) -> Self {
+        let mut story = Self {
+            state: state.into(),
+            present,
+            loaded: false,
+            rows: Vec::new(),
+            has_older: false,
+            transcript: Default::default(),
+            documents: Vec::new(),
+            texts: Vec::new(),
+            comments: Vec::new(),
+            heights: Default::default(),
+            available_width: 0.,
+            scroll: ScrollHandle::new(),
+            pending_jump: None,
+            pending_restore: None,
+            wash: None,
+            hint: None,
+            composer: None,
+            drafts: Vec::new(),
         };
-        let documents = messages
+        story.reload();
+        story.scroll.scroll_to_bottom();
+        if state == "drafts" {
+            story.drafts = vec![
+                ("c21".into(), "焦点顺序已经正确".into()),
+                ("c24".into(), "错误提示贴在字段下方".into()),
+            ];
+            let author = |id: &str| author_of(&story.transcript, &story.rows, id);
+            let drafts = vec![
+                (
+                    author("c21"),
+                    "焦点顺序已经正确".to_owned(),
+                    "菜单里的 Tab 顺序也要一起测。".to_owned(),
+                ),
+                (
+                    author("c24"),
+                    "错误提示贴在字段下方".to_owned(),
+                    String::new(),
+                ),
+            ];
+            story.composer =
+                Some(cx.new(|cx| {
+                    crate::component_story::ConversationComposer::with_drafts(drafts, cx)
+                }));
+        }
+        story
+    }
+
+    fn reload(&mut self) {
+        let (rows, has_older) = fixture(&self.state, self.loaded);
+        let transcript = presentation::parse((self.present)(request(&rows, has_older)));
+        self.documents = rows
             .iter()
-            .map(|message| match message.author {
-                None => MessageDocument::plain(message.body),
-                Some(_) => MessageDocument::parse(message.body),
+            .map(|row| {
+                let content = row["content"].as_str().unwrap_or_default();
+                if row["role"] == "user" {
+                    MessageDocument::plain(&zork_client_types::comments::display_text(content))
+                } else {
+                    MessageDocument::parse(content)
+                }
             })
             .collect();
-        let tints = crate::design::agent_tint_slots(
-            messages
-                .iter()
-                .filter_map(|message| message.author.map(|a| AGENTS[a].id)),
-        );
-        let scroll = ScrollHandle::new();
-        if matches!(state, "reply-offscreen" | "phone-reply") {
-            scroll.scroll_to_bottom();
-        }
-        let highlight = (state == "reply-highlight").then_some(0);
-        Self {
-            state: state.into(),
-            messages,
-            documents,
-            tints,
-            available_width: 0.,
-            scroll,
-            highlighted: highlight,
-            pending_jump: highlight,
-            time,
-            text: ReplyText::default(),
-        }
-    }
-
-    fn tint(&self, agent: usize) -> usize {
-        self.tints
+        self.texts = rows
             .iter()
-            .find(|(id, _)| id == AGENTS[agent].id)
-            .map(|(_, slot)| *slot)
-            .unwrap_or(0)
+            .zip(&self.documents)
+            .zip(&transcript.rows)
+            .map(|((row, document), presented)| {
+                if presented.comments.is_some() {
+                    zork_client_types::comments::quotable_text(
+                        row["content"].as_str().unwrap_or_default(),
+                    )
+                } else {
+                    document.plain_text()
+                }
+            })
+            .collect();
+        self.comments = transcript
+            .rows
+            .iter()
+            .map(|row| {
+                row.comments.as_ref().map(|comments| {
+                    (
+                        comments
+                            .pairs
+                            .iter()
+                            .map(|pair| Rc::new(MessageDocument::plain(&pair.pair.reply)))
+                            .collect(),
+                        (!comments.extra_text.trim().is_empty())
+                            .then(|| Rc::new(MessageDocument::plain(&comments.extra_text))),
+                    )
+                })
+            })
+            .collect();
+        self.rows = rows;
+        self.has_older = has_older;
+        self.transcript = transcript;
     }
 
-    fn quote_author(&self, author: Option<usize>) -> QuoteAuthor {
-        match author {
-            None => QuoteAuthor::User,
-            Some(agent) => QuoteAuthor::Agent {
-                name: AGENTS[agent].name.into(),
-                tint: self.tint(agent),
-            },
-        }
+    fn content_width(&self) -> f32 {
+        let gutter = if self.available_width < PHONE_WIDTH {
+            32.
+        } else {
+            48.
+        };
+        (self.available_width - gutter).min(744.).max(1.)
     }
 
-    /// Scrolls the original to the upper part of the view and washes it briefly.
-    fn jump(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.highlighted = Some(index);
-        self.pending_jump = Some(index);
+    /// Scrolls the original to ~24 px below the top and washes the passage
+    /// (or the whole message) for about 1.6 s.
+    fn jump(&mut self, target: usize, mark: Option<String>, cx: &mut Context<Self>) {
+        let passage = mark
+            .as_deref()
+            .and_then(|mark| presentation::find_passage(&self.texts[target], mark));
+        self.wash = Some(Wash {
+            row: target,
+            passage,
+            started: std::time::Instant::now(),
+        });
+        self.pending_jump = Some(target);
         cx.notify();
         cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(std::time::Duration::from_millis(1600))
-                .await;
-            let _ = this.update(cx, |v, cx| {
-                if v.highlighted == Some(index) {
-                    v.highlighted = None;
-                    cx.notify();
-                }
-            });
+            cx.background_executor().timer(WASH_HOLD).await;
+            let _ = this.update(cx, |_, cx| cx.notify());
         })
         .detach();
     }
 
-    fn apply_pending_jump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// First click on a not-loaded original: load older history only, keep
+    /// the distance from the bottom, and say how to jump.
+    fn load_earlier(&mut self, cx: &mut Context<Self>) {
+        let offset = self.scroll.offset();
+        let max = self.scroll.max_offset();
+        self.pending_restore = Some(max.y + offset.y);
+        self.loaded = true;
+        self.reload();
+        self.hint = Some("已加载，再点引用可以跳转到原消息".into());
+        cx.notify();
+    }
+
+    fn apply_pending_scroll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(from_bottom) = self.pending_restore {
+            let max = self.scroll.max_offset();
+            if max.y > from_bottom {
+                let offset = self.scroll.offset();
+                self.scroll
+                    .set_offset(point(offset.x, -(max.y - from_bottom)));
+                self.pending_restore = None;
+            } else {
+                cx.on_next_frame(window, |_, _, cx| cx.notify());
+            }
+        }
         let Some(index) = self.pending_jump else {
             return;
         };
-        // Row children follow a leading spacer, so message i is child i + 1.
-        match self.scroll.bounds_for_item(index + 1) {
+        match self.scroll.bounds_for_item(index) {
             Some(item) => {
                 let view = self.scroll.bounds();
                 let offset = self.scroll.offset();
                 let max = self.scroll.max_offset();
-                let target = (offset.y - (item.top() - view.top()) + px(24.))
+                // Child bounds are in unscrolled content coordinates.
+                let target = (-(item.top() - view.top()) + px(24.))
                     .min(px(0.))
                     .max(-max.y);
                 self.scroll.set_offset(point(offset.x, target));
@@ -383,134 +502,194 @@ impl Story {
         }
     }
 
-    fn reply_for(&self, index: usize) -> Option<Reply> {
-        let spec = self.messages[index].reply.clone()?;
-        Some(match spec {
-            ReplySpec::To(id) => match self.messages.iter().position(|m| m.id == id) {
-                Some(original) if index.saturating_sub(original) <= MARKER_DISTANCE => {
-                    Reply::Marker {
-                        author: self.quote_author(self.messages[original].author),
-                    }
-                }
-                Some(original) => Reply::Quote {
-                    author: self.quote_author(self.messages[original].author),
-                    excerpt: super::identity::excerpt(&self.documents[original].plain_text()),
-                },
-                None => Reply::NotLoaded,
-            },
-            ReplySpec::Deleted(author) => Reply::Deleted {
-                author: author.map(|a| self.quote_author(Some(a))),
-            },
-            ReplySpec::NotLoaded => Reply::NotLoaded,
-            ReplySpec::Loading => Reply::Loading,
-            ReplySpec::Long(agent, text) => Reply::Quote {
-                author: self.quote_author(Some(agent)),
-                excerpt: super::identity::excerpt(text),
-            },
-        })
-    }
-
-    fn joins_previous(&self, index: usize) -> bool {
-        if index == 0 || self.state == "reply-edge-cases" {
-            return false;
-        }
-        let (previous, current) = (&self.messages[index - 1], &self.messages[index]);
-        let seconds = |at: &str| {
-            // Fixture instants share one offset; compare wall-clock seconds.
-            let time = &at[11..19];
-            let day: i64 = at[8..10].parse().unwrap_or(0);
-            let parts: Vec<i64> = time.split(':').map(|p| p.parse().unwrap_or(0)).collect();
-            day * 86_400 + parts[0] * 3600 + parts[1] * 60 + parts[2]
+    fn wash_alpha(&self, window: &mut Window) -> f32 {
+        let Some(wash) = &self.wash else {
+            return 0.;
         };
-        previous.author == current.author
-            && previous.at[..7] == current.at[..7]
-            && seconds(current.at) - seconds(previous.at) <= GROUP_WINDOW_SECONDS
+        let elapsed = wash.started.elapsed();
+        if elapsed < WASH_HOLD {
+            return 1.;
+        }
+        let fade = (elapsed - WASH_HOLD).as_secs_f32() / WASH_FADE.as_secs_f32();
+        if fade >= 1. {
+            return 0.;
+        }
+        window.request_animation_frame();
+        1. - fade
     }
+}
+
+/// The quote author of fixture row `id` as the transcript shows it.
+fn author_of(
+    transcript: &presentation::Transcript,
+    rows: &[Value],
+    id: &str,
+) -> identity::QuoteAuthor {
+    let agent = rows
+        .iter()
+        .find(|row| row["id"] == id)
+        .and_then(|row| row["author_agent_id"].as_str().map(str::to_owned));
+    transcript
+        .rows
+        .iter()
+        .filter_map(|row| row.identity.as_ref())
+        .find(|identity| identity.author.agent_id == agent)
+        .map(|identity| identity.author.quote_author())
+        .unwrap_or(identity::QuoteAuthor {
+            name: String::new(),
+            disc: None,
+        })
 }
 
 impl Render for Story {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.apply_pending_jump(window, cx);
-        let content_width = (self.available_width - 48.).min(744.).max(1.);
-        let devices: Vec<&str> = {
-            let mut devices: Vec<&str> = self
-                .messages
-                .iter()
-                .filter_map(|m| m.author.map(|a| AGENTS[a].device))
-                .collect();
-            devices.sort();
-            devices.dedup();
-            devices
+        self.apply_pending_scroll(window, cx);
+        let content_width = self.content_width();
+        let phone = self.available_width < PHONE_WIDTH;
+        let show_device = self.transcript.multi_device && !phone;
+        let screen = self.scroll.bounds().size.height.as_f32();
+        let wash_alpha = self.wash_alpha(window);
+        if wash_alpha <= 0. {
+            self.wash = None;
+        }
+        let weak = cx.entity().downgrade();
+        let heights = self.heights.clone();
+        let height_of = |index: usize| {
+            let row = &self.transcript.rows[index];
+            let id = row.id.clone().unwrap_or_default();
+            heights.borrow().get(&id, content_width).unwrap_or_else(|| {
+                presentation::estimate_height(
+                    &self.texts[index],
+                    content_width,
+                    row.group_head,
+                    row.user,
+                )
+            })
         };
-        let weak: gpui::WeakEntity<Self> = cx.entity().downgrade();
-        let count = self.messages.len();
-        let mut rows = Vec::with_capacity(count + 2);
-        rows.push(div().h(px(12.)).into_any_element());
-        for index in 0..count {
-            let message = self.messages[index].clone();
-            let starts = !self.joins_previous(index);
-            let ends = index + 1 == count || !self.joins_previous(index + 1);
-            let (label, full) = (self.time)(message.at);
-            let reply = self.reply_for(index);
-            let target = match &message.reply {
-                Some(ReplySpec::To(id)) => self.messages.iter().position(|m| m.id == *id),
-                _ => None,
-            };
-            let on_reply: Option<super::identity::Callback> = match (&reply, target) {
-                (Some(_), Some(original)) => {
-                    let weak = weak.clone();
-                    Some(Rc::new(move |_, cx| {
-                        let _ = weak.update(cx, |v, cx| v.jump(original, cx));
-                    }))
+        let mut rows = Vec::with_capacity(self.transcript.rows.len());
+        for (index, presented) in self.transcript.rows.iter().enumerate() {
+            let omit =
+                presentation::omit_row_reply(&self.transcript.rows, index, &height_of, screen);
+            let mut decor = Decorations::from_presentation(
+                presented,
+                show_device,
+                omit,
+                false,
+                ReplyText::default(),
+            );
+            if let Some(line) = presented.reply.as_ref() {
+                let weak = weak.clone();
+                let mark = line.mark();
+                decor.on_reply = match (line.state, line.target_index) {
+                    (presentation::TargetState::Linked, Some(target)) => {
+                        Some(Rc::new(move |_, cx| {
+                            let mark = mark.clone();
+                            let _ = weak.update(cx, |v, cx| v.jump(target, mark, cx));
+                        }))
+                    }
+                    (presentation::TargetState::NotLoaded, _) => Some(Rc::new(move |_, cx| {
+                        let _ = weak.update(cx, |v, cx| v.load_earlier(cx));
+                    })),
+                    _ => None,
+                };
+            }
+            // In-place marks: the jump wash on the passage, draft underlines.
+            let mut marks = Vec::new();
+            let mut whole = 0.;
+            if let Some(wash) = self.wash.as_ref().filter(|wash| wash.row == index) {
+                match &wash.passage {
+                    Some(range) => marks.push((range.clone(), MarkKind::Wash(wash_alpha))),
+                    None => whole = wash_alpha,
                 }
-                (Some(Reply::NotLoaded), None) => {
-                    let weak = weak.clone();
-                    Some(Rc::new(move |_, cx| {
-                        let _ = weak.update(cx, |v, cx| {
-                            v.messages[index].reply = Some(ReplySpec::Loading);
-                            cx.notify();
-                        });
-                    }))
+            }
+            for (source, quote) in &self.drafts {
+                if presented.id.as_deref() == Some(source.as_str()) {
+                    if let Some(range) = presentation::find_passage(&self.texts[index], quote) {
+                        marks.push((range, MarkKind::Draft));
+                    }
                 }
-                _ => None,
-            };
-            let identity = message.author.map(|agent| AgentIdentity {
-                name: AGENTS[agent].name.into(),
-                tint: self.tint(agent),
-                device: (devices.len() > 1).then(|| AGENTS[agent].device.into()),
-                model: Some(AGENTS[agent].model.into()),
-            });
-            let row = Row {
+            }
+            decor.wash = whole;
+            decor.marks =
+                (!marks.is_empty()).then(|| TextMarks::new(self.texts[index].clone(), marks));
+            decor.quote_action = Some(("引用".into(), Rc::new(|_, _| {})));
+            if let (Some(view), Some((docs, extra))) = (&presented.comments, &self.comments[index])
+            {
+                decor.comments = Some(CommentsView {
+                    pairs: view
+                        .pairs
+                        .iter()
+                        .zip(docs)
+                        .map(|(pair, document)| {
+                            let weak = weak.clone();
+                            let passage = pair.pair.quote.clone();
+                            let target = pair.source_index;
+                            CommentPairView {
+                                author: pair.source.quote_author(),
+                                passage: pair.pair.quote.clone(),
+                                reply: document.clone(),
+                                on_click: target.map(|target| {
+                                    Rc::new(move |_: &mut Window, cx: &mut gpui::App| {
+                                        let passage = passage.clone();
+                                        let _ = weak
+                                            .update(cx, |v, cx| v.jump(target, Some(passage), cx));
+                                    }) as super::Callback
+                                }),
+                            }
+                        })
+                        .collect(),
+                    extra: extra.clone(),
+                });
+            }
+            let element = Row {
                 index,
-                user: message.author.is_none(),
+                user: presented.user,
                 document: &self.documents[index],
                 content_width,
                 selection: None,
                 author_name: None,
                 device: None,
                 model: None,
-                time: Some(label),
+                time: None,
             }
-            .render_with(
-                window,
-                Decorations {
-                    identity,
-                    grouping: Some(Grouping { starts, ends }),
-                    reply,
-                    reply_text: self.text.clone(),
-                    on_reply,
-                    time_full: Some(full),
-                    highlighted: self.highlighted == Some(index),
-                },
+            .render_with(window, decor);
+            let id = presented.id.clone().unwrap_or_default();
+            let heights = self.heights.clone();
+            let owner = weak.clone();
+            rows.push(
+                div()
+                    .relative()
+                    .child(element)
+                    .child(
+                        gpui::canvas(
+                            move |bounds, _, cx| {
+                                let changed = heights.borrow_mut().record(
+                                    &id,
+                                    content_width,
+                                    bounds.size.height.as_f32(),
+                                );
+                                if changed {
+                                    let _ = owner.update(cx, |_, cx| cx.notify());
+                                }
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
+                    .into_any_element(),
             );
-            rows.push(row);
         }
-        rows.push(div().h(px(16.)).into_any_element());
+        let (discs, more) = presentation::agent_stack(&self.transcript);
+        let p = crate::design::ZORK_UI.palette;
         let owner = cx.entity().downgrade();
         div()
             .relative()
             .size_full()
             .min_w_0()
+            .flex()
+            .flex_col()
+            .bg(rgb(p.canvas))
             .child(
                 gpui::canvas(
                     move |bounds, _, cx| {
@@ -529,16 +708,49 @@ impl Render for Story {
             )
             .child(
                 div()
+                    .flex_shrink_0()
+                    .h(px(44.))
+                    .px_4()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(identity::chat_title(
+                        "chat-header",
+                        &discs,
+                        more,
+                        "登录页改版",
+                        p.canvas,
+                    )),
+            )
+            .child(
+                div()
                     .id("multi-agent-scroll")
-                    .size_full()
+                    .flex_1()
+                    .min_h_0()
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
-                    .children(rows),
+                    .children(rows)
+                    .child(div().h(px(16.))),
             )
+            .when_some(self.composer.clone(), |v, composer| {
+                v.child(div().flex_shrink_0().h(px(210.)).child(composer))
+            })
+            .when_some(self.hint.clone(), |v, hint| {
+                v.child(
+                    div()
+                        .absolute()
+                        .bottom(px(28.))
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(identity::dark_pill("multi-agent-hint", hint)),
+                )
+            })
     }
 }
 
 /// Creates the story entity for `state`.
-pub fn create(state: &str, time: TimeFormat, cx: &mut gpui::App) -> Entity<Story> {
-    cx.new(|cx| Story::new(state, time, cx))
+pub fn create(state: &str, present: Present, cx: &mut gpui::App) -> Entity<Story> {
+    cx.new(|cx| Story::new(state, present, cx))
 }

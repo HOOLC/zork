@@ -39,6 +39,7 @@ mod files;
 mod history;
 mod interactions;
 mod message_presentation;
+mod multi_agent;
 mod new_chat;
 mod panel_layout;
 mod session_activity;
@@ -151,11 +152,15 @@ pub struct RootView {
 
     // Conversation composer
     composer_input: Entity<ComposerInput>,
-    comment_input: Entity<ComposerInput>,
     draft_state: Arc<zork_client_core::state::Draft>,
     draft_task: Option<Task<()>>,
     comment_popover: Option<comments::CommentPopover>,
-    comment_editor: Entity<zork_ui::components::comments::Editor>,
+    /// Reply inputs of the draft quotes, by draft comment id.
+    draft_inputs: HashMap<String, Entity<ComposerInput>>,
+    focus_draft: Option<String>,
+    /// The main input shows "补充说明（可选）" while drafts exist.
+    extra_placeholder: bool,
+    multi_agent: multi_agent::MultiAgentState,
     transcript_selection: Rc<std::cell::RefCell<crate::components::selection::TranscriptSelection>>,
     preparing_files: usize,
     file_ui: files::UiState,
@@ -272,20 +277,6 @@ impl RootView {
             zork_ui::components::region::invalidate(cx, &["composer", "home"]);
         })
         .detach();
-        let comment_editor = cx.new(|cx| zork_ui::components::comments::Editor::new("", cx));
-        let comment_input = comment_editor.read(cx).input();
-        cx.subscribe(
-            &comment_editor,
-            |view, _, event: &zork_ui::components::comments::Submit, cx| {
-                view.add_comment(event, cx)
-            },
-        )
-        .detach();
-        cx.subscribe(
-            &comment_editor,
-            |view, _, _: &zork_ui::components::comments::Closed, cx| view.dismiss_selection(cx),
-        )
-        .detach();
         let files_menu = cx.new(|cx| {
             zork_ui::conversation_contents::Menu::new(
                 zork_ui::resources::Text(Rc::new(|key| crate::i18n::Locale::ZhCn.text(key).into())),
@@ -392,11 +383,13 @@ impl RootView {
             first_chat_welcome: false,
             new_chat_devices: Default::default(),
             new_chat_updates: None,
-            comment_input,
             draft_state: Arc::new(Default::default()),
             draft_task: None,
             comment_popover: None,
-            comment_editor,
+            draft_inputs: HashMap::new(),
+            focus_draft: None,
+            extra_placeholder: false,
+            multi_agent: Default::default(),
             transcript_selection: Rc::new(std::cell::RefCell::new(Default::default())),
             local_cache: local_cache.clone(),
             delivery_task: None,
@@ -484,6 +477,11 @@ impl RootView {
         list.set_scroll_handler(move |_, _, cx| {
             let _ = view.update(cx, |v, cx| {
                 v.interrupt_message_scroll(cx);
+                // The selection pill does not follow the text while scrolling.
+                if v.comment_popover.is_some() {
+                    v.comment_popover = None;
+                    zork_ui::components::region::invalidate(cx, &["overlays"]);
+                }
                 v.scroll_active = true;
                 v.scroll_resume_task = Some(cx.spawn(async move |this, cx| {
                     cx.background_executor()
@@ -730,10 +728,14 @@ impl RootView {
         if update.loading_changed {
             self.messages_loading = state.loading;
             self.messages_failed = state.error.is_some() && !state.loaded;
+            let older_done = self.loading_older && !state.loading_older;
             self.loading_older = state.loading_older;
             self.older_cursor = state.older_cursor.clone();
             self.has_older = state.older_cursor.is_some();
             self.error = state.error.clone();
+            if older_done {
+                self.older_loaded(cx);
+            }
             regions.extend(["transcript", "composer"]);
         }
         if !regions.is_empty() {
@@ -922,9 +924,8 @@ impl Render for RootView {
             };
             let available = window.viewport_size().width.as_f32() - rail;
             let locale = self.locale;
-            let visible = self.preview_original.is_none()
-                && self.comment_popover.is_none()
-                && !self.has_conversation_artifact_preview();
+            let visible =
+                self.preview_original.is_none() && !self.has_conversation_artifact_preview();
             let moving = self.browser.update(cx, |browser, cx| {
                 if self.preview_original.is_none() {
                     browser.set_host(host, cx);
@@ -990,6 +991,16 @@ impl Render for RootView {
                     });
                 }
             }))
+            // A click anywhere else dismisses the "引用回复" pill; text and the
+            // pill itself stop propagation before this.
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|v, _, _, cx| {
+                    if v.comment_popover.is_some() {
+                        v.dismiss_selection(cx);
+                    }
+                }),
+            )
             .on_mouse_up(
                 gpui::MouseButton::Left,
                 cx.listener(|v, event, window, cx| {
@@ -1010,10 +1021,10 @@ impl Render for RootView {
                     }
                 }),
             )
-            .on_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
+            .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.modifiers.platform
                     && event.keystroke.key == "c"
-                    && view.comment_input.read(cx).value().is_empty()
+                    && view.overlay_focus.is_focused(window)
                 {
                     if let Some(popover) = &view.comment_popover {
                         cx.write_to_clipboard(gpui::ClipboardItem::new_string(
@@ -1199,7 +1210,7 @@ impl Render for RootView {
 
 impl RootView {
     fn has_page_workspace(&self, cx: &gpui::App) -> bool {
-        self.browser.read(cx).is_present() && self.comment_popover.is_none()
+        self.browser.read(cx).is_present()
     }
 
     fn panel_tools_right_inset(&self, cx: &gpui::App) -> f32 {
@@ -1208,7 +1219,7 @@ impl RootView {
     }
 
     fn render_shell_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        if self.browser.read(cx).is_expanded() && self.comment_popover.is_none() {
+        if self.browser.read(cx).is_expanded() {
             return div().w_0().h_full();
         }
         if matches!(self.shell.route(), ShellRoute::Home) {
@@ -1235,7 +1246,7 @@ impl RootView {
             self.sync_conversation_files(cx);
         }
         match self.selected_session.clone() {
-            Some(_) => div()
+            Some(session) => div()
                 .relative()
                 .flex_1()
                 .min_w_0()
@@ -1248,6 +1259,7 @@ impl RootView {
                     cx,
                     |v, window, cx| v.render_transcript(window, cx).into_any_element(),
                 ))
+                .children(self.render_chat_header(&session, cx))
                 .when(
                     self.preview_original.is_some() || self.can_send_selected(),
                     |pane| {
@@ -1270,6 +1282,73 @@ impl RootView {
                 .min_h_0()
                 .child(self.render_new_chat(window, cx)),
         }
+    }
+
+    /// The Chat header: the Chat's stacked agent avatars before its title,
+    /// floating in the transcript's top clearance.
+    fn render_chat_header(&self, session: &str, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        let chat = self
+            .device_navigation
+            .as_ref()
+            .and_then(|navigation| navigation.read(cx).chat(session));
+        let title = chat
+            .as_ref()
+            .map(|chat| chat.title.clone())
+            .filter(|title| !title.is_empty())
+            .or_else(|| {
+                self.sessions
+                    .iter()
+                    .find(|s| s.session_id == session)
+                    .and_then(|s| s.title.clone())
+            })
+            .filter(|title| !title.trim().is_empty())?;
+        let (discs, more) = match &chat {
+            Some(chat) => (
+                chat.avatar
+                    .agents
+                    .iter()
+                    .map(|agent| zork_ui::components::message_row::Disc {
+                        tint: agent.tint,
+                        maker: agent.maker.clone(),
+                        initial: agent.initial.clone(),
+                    })
+                    .collect::<Vec<_>>(),
+                chat.avatar.more,
+            ),
+            None => zork_ui::components::message_row::presentation::agent_stack(
+                &self.multi_agent.presented,
+            ),
+        };
+        let canvas = ZORK_UI.palette.canvas;
+        Some(
+            div()
+                .absolute()
+                .top(px(6.))
+                .left_0()
+                .w_full()
+                .h(px(32.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .max_w(px((self.composer_surface_width * 0.5).max(160.)))
+                        .h(px(32.))
+                        .px(px(10.))
+                        .rounded_full()
+                        .bg(rgb(canvas))
+                        .flex()
+                        .items_center()
+                        .child(zork_ui::components::message_row::identity::chat_title(
+                            "chat-header",
+                            &discs,
+                            more,
+                            &title,
+                            canvas,
+                        )),
+                )
+                .into_any_element(),
+        )
     }
 
     fn render_session_header(&mut self, _id: &str, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1385,6 +1464,27 @@ impl RootView {
         } else {
             0.
         };
+        // Core's presentation of every row; the UI adds the one-screen
+        // measurement, callbacks, the jump wash and draft marks.
+        let presented = self.transcript_presentation(cx);
+        let screen = (self.transcript_list.viewport_bounds().size.height.as_f32() - bottom_inset).max(0.);
+        let reduce_motion = cx.reduce_motion();
+        let row_context = multi_agent::RowContext {
+            show_device: presented.multi_device && content_width >= multi_agent::PHONE_WIDTH,
+            presented,
+            heights: self.multi_agent.heights.clone(),
+            omissions: self.multi_agent.omissions.clone(),
+            content_width,
+            screen,
+            reply_text: multi_agent::reply_text(self.locale),
+            reply_loading: self.multi_agent.reply_loading.clone(),
+            wash: self.multi_agent.wash.as_ref().map(|wash| {
+                (wash.id.clone(), wash.passage.clone(), self.wash_alpha(reduce_motion))
+            }),
+            drafts: Rc::new(self.draft_passages()),
+            quote_label: self.locale.text("quote_message").into(),
+            root: cx.entity().downgrade(),
+        };
         let list = gpui::list(self.transcript_list.clone(), move |ix, window, cx| {
             if ix < lines.len() {
                 #[cfg(feature = "headless-bench")]
@@ -1399,7 +1499,14 @@ impl RootView {
                     metadata,
                     ..
                 } = &lines[ix];
-                let document = documents[ix].document(role, content);
+                let selection_text = documents[ix].selection_text(role, content);
+                let decorations = row_context.decorations(
+                    ix,
+                    &lines,
+                    &documents,
+                    selection_text.clone(),
+                    documents[ix].comment_documents(role, content),
+                );
                 let selection = crate::components::selection::SelectionContext::new(
                     format!(
                         "{}:{}",
@@ -1416,13 +1523,31 @@ impl RootView {
                         author_agent_id: metadata.author_agent_id.clone(),
                         quote: String::new(),
                     },
-                    document.shared_plain_text(),
+                    selection_text,
                     selection_state.clone(),
                     focus.clone(),
                     notify.clone(),
                 )
                 .with_link_handler(link_handler.clone());
+                // Laid-out heights feed the omission rule's one-screen distance.
+                let heights = row_context.heights.clone();
+                let height_key = metadata.id.clone().unwrap_or_else(|| format!("row-{ix}"));
                 div()
+                    .relative()
+                    .child(
+                        gpui::canvas(
+                            move |bounds, _, _| {
+                                heights.borrow_mut().record(
+                                    &height_key,
+                                    content_width,
+                                    bounds.size.height.as_f32(),
+                                );
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
                     // Keep the first message clear of floating controls; this
                     // space scrolls away with the message instead of forming a header.
                     .when(ix == 0, |row| {
@@ -1486,6 +1611,7 @@ impl RootView {
                             local_name.as_deref(),
                             &aliases,
                         ),
+                        decorations,
                     ))
                     .when_some(crate::components::interaction::render(lines.shared(ix).unwrap(), &documents[ix], locale, &session_id, reader_root.clone(), cx), |row, card| {
                         row.child(div().pt_2().pb_2().child(card))
@@ -1812,7 +1938,7 @@ impl RootView {
             .clamp(24., ZORK_UI.composer.thread_max_editor_height);
     }
 
-    fn render_composer_extras(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn render_composer_extras(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> Div {
         let feedback = if self.preparing_files > 0 {
             Some(self.locale.text("preparing_files").to_owned())
         } else if self.queued_count > 0 {
@@ -1843,9 +1969,7 @@ impl RootView {
             .max_w_full()
             .flex()
             .flex_col()
-            .when(!self.current_comments().is_empty(), |v| {
-                v.child(self.render_comment_queue(window, cx))
-            })
+            .children(self.render_hint())
             .map(|frame| {
                 frame.when_some(feedback, |frame, text| {
                     frame.child(
@@ -1889,6 +2013,7 @@ impl RootView {
 
 // ------------------------------------------------------------- line render
 
+#[allow(clippy::too_many_arguments)]
 fn render_line(
     index: usize,
     line: &TranscriptLine,
@@ -1897,6 +2022,7 @@ fn render_line(
     selection: Option<&crate::components::selection::SelectionContext>,
     window: &mut Window,
     device: Option<String>,
+    decorations: zork_ui::components::message_row::Decorations,
 ) -> gpui::AnyElement {
     let TranscriptLine::Message {
         role,
@@ -1923,7 +2049,7 @@ fn render_line(
                 .unwrap_or_else(|_| time.clone())
         }),
     }
-    .render(window)
+    .render_with(window, decorations)
 }
 
 fn agent_status_label(status: &AgentStatus, locale: Locale) -> String {

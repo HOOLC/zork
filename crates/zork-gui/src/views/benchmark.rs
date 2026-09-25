@@ -333,6 +333,34 @@ impl RootView {
         zork_ui::components::region::invalidate_all(cx);
     }
 
+    /// Marks older history as available (reply targets outside the rows
+    /// then read as not loaded).
+    pub fn benchmark_set_has_older(&mut self, has_older: bool, cx: &mut Context<Self>) {
+        self.has_older = has_older;
+        zork_ui::components::region::invalidate_all(cx);
+    }
+
+    /// Older history arrived after a click on a not-loaded reply: rows are
+    /// prepended with the list keeping its reading anchor, as the core
+    /// conversation update does.
+    pub fn benchmark_older_loaded(&mut self, older: Vec<TranscriptLine>, cx: &mut Context<Self>) {
+        let added = older.len();
+        let mut lines = older;
+        lines.extend(self.lines.iter().cloned());
+        self.lines = lines.into();
+        self.transcript_render_cache = Default::default();
+        self.transcript_list.splice(0..0, added);
+        self.has_older = false;
+        self.loading_older = false;
+        self.older_loaded(cx);
+        zork_ui::components::region::invalidate_all(cx);
+    }
+
+    /// The not-loaded reply whose click is loading older history.
+    pub fn benchmark_reply_loading(&self) -> Option<String> {
+        self.multi_agent.reply_loading.clone()
+    }
+
     pub fn benchmark_story_placeholder(&mut self, placeholder: String, cx: &mut Context<Self>) {
         self.composer_input
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));

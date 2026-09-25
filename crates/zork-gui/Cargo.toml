@@ -103,6 +103,12 @@ harness = false
 required-features = ["headless-bench"]
 
 [[test]]
+name = "headless_multi_agent"
+path = "tests/headless_multi_agent.rs"
+harness = false
+required-features = ["headless-bench"]
+
+[[test]]
 name = "headless_chat_activity"
 path = "tests/headless_chat_activity.rs"
 harness = false

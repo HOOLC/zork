@@ -340,6 +340,18 @@ impl DeviceNavigation {
         zork_ui::components::region::invalidate(cx, &[&region]);
         cx.emit(Changed);
     }
+    /// The navigation row of a Chat (title and stacked agent avatar), from
+    /// the active device first.
+    pub fn chat(&self, chat_id: &str) -> Option<zork_client_core::state::NavigationChat> {
+        let active = self.active.as_deref();
+        let mut devices: Vec<&Device> = self.devices.iter().collect();
+        devices.sort_by_key(|device| Some(device.node.id.as_str()) != active);
+        devices
+            .into_iter()
+            .flat_map(|device| device.data.chats.iter())
+            .find(|chat| chat.chat_id == chat_id)
+            .cloned()
+    }
     /// Archived Chats across every device, newest first.
     pub fn archived_chats(&self) -> Vec<zork_ui::settings::archived::ArchivedChat> {
         let mut chats: Vec<_> = self
@@ -445,10 +457,12 @@ impl Render for DeviceNavigation {
         } else {
             let locale = self.locale;
             let view = cx.new(|cx| {
-                zork_ui::chat_navigation::Navigation::new(
+                let mut view = zork_ui::chat_navigation::Navigation::new(
                     zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())),
                     cx,
-                )
+                );
+                view.set_time_format(chat_time_format(locale), cx);
+                view
             });
             cx.subscribe(&view, |v, _, event: &Action, cx| match event {
                 Action::Navigate { node, destination } => {
@@ -506,6 +520,7 @@ impl Render for DeviceNavigation {
                 chats: device.data.chats.clone(),
                 selected_session: device.selection.selected_session.clone(),
                 chatting: matches!(device.selection.route, Some(ShellRoute::Task(_))),
+                local: device.node.local,
             })
             .collect();
         view.update(cx, |v, cx| {
@@ -516,9 +531,39 @@ impl Render for DeviceNavigation {
                     zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())),
                     cx,
                 );
+                v.set_time_format(chat_time_format(locale), cx);
                 self.view_locale = Some(locale);
             }
         });
         view
     }
+}
+
+/// Relative time of a Chat's last activity for the list's meta line, from
+/// core `message_time` (repainted when the label changes).
+pub fn chat_time_format(locale: Locale) -> zork_ui::chat_navigation::TimeFormat {
+    use zork_client_core::message_time::{self, TimeLocale};
+    let locale = match locale {
+        Locale::ZhCn => TimeLocale::ZhCn,
+        Locale::En => TimeLocale::En,
+    };
+    std::rc::Rc::new(move |updated: &str| {
+        let now = chrono::Local::now().fixed_offset();
+        let at = chrono::DateTime::parse_from_rfc3339(updated)
+            .map(|at| at.with_timezone(&chrono::Utc))
+            .ok()
+            .or_else(|| {
+                chrono::NaiveDateTime::parse_from_str(updated, "%Y-%m-%dT%H:%M:%S")
+                    .ok()
+                    .and_then(|at| at.and_local_timezone(chrono::Local).single())
+                    .map(|at| at.with_timezone(&chrono::Utc))
+            });
+        match at {
+            Some(at) => (
+                message_time::format(at, now, locale).label,
+                message_time::next_change(at, now).map(|wait| wait.num_milliseconds()),
+            ),
+            None => (updated.get(11..16).unwrap_or_default().to_owned(), None),
+        }
+    })
 }

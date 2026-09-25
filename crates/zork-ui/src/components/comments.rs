@@ -1,13 +1,20 @@
 //! Quoted comment presentation. Hosts decide when to persist or send a batch.
-use super::widgets::controls::ControlElement;
+//!
+//! Draft comments sit inside the composer in the shape of the sent message:
+//! per draft a quote line (↩, source author, 「passage」, × to remove) and a
+//! borderless auto-growing input "回复这段…". No cards or boxes.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     comments::DraftComment,
+    components::{
+        message_row::identity::{self, QuoteAuthor},
+        text_input::ComposerInput,
+    },
     controls as ui,
-    design::ZORK_UI,
+    design::{INTERACTION, ZORK_UI},
 };
-use gpui::{div, prelude::*, px, rgb, ClickEvent, Context, Entity, Window};
-use std::{cell::Cell, rc::Rc};
+use gpui::{div, prelude::*, px, rgb, Context, Entity, Window};
+use std::rc::Rc;
 mod editor;
 pub use editor::{Closed, Editor, EditorRequest, Submit};
 fn id(prefix: &str, suffix: &str) -> String {
@@ -17,245 +24,283 @@ fn id(prefix: &str, suffix: &str) -> String {
         format!("{prefix}-{suffix}")
     }
 }
-pub fn queue<V: 'static>(
+
+/// One draft as the composer shows it.
+pub struct DraftView {
+    pub comment: DraftComment,
+    /// Source author as the transcript shows it (disc for agents).
+    pub author: QuoteAuthor,
+    /// The draft's own reply input (borderless, auto-growing).
+    pub input: Entity<ComposerInput>,
+}
+
+const LINE: f32 = 20.;
+const GAP: f32 = 10.;
+/// Space under the last draft, before the main input.
+const BOTTOM: f32 = 8.;
+/// The drafts scroll inside the composer beyond this height.
+pub const DRAFTS_MAX_HEIGHT: f32 = 240.;
+const INPUT_MIN: f32 = 20.;
+const INPUT_MAX: f32 = 120.;
+
+/// Height of one draft's reply input from its content.
+pub fn draft_input_height(input: &ComposerInput) -> f32 {
+    input
+        .content_height()
+        .unwrap_or(INPUT_MIN)
+        .clamp(INPUT_MIN, INPUT_MAX)
+}
+
+/// The composer band the drafts occupy, given each input's height.
+pub fn drafts_height(inputs: impl IntoIterator<Item = f32>) -> f32 {
+    let mut total = 0.;
+    let mut count = 0;
+    for input in inputs {
+        total += LINE + 2. + input;
+        count += 1;
+    }
+    if count == 0 {
+        return 0.;
+    }
+    (total + GAP * (count - 1) as f32).min(DRAFTS_MAX_HEIGHT) + BOTTOM
+}
+
+/// The drafts band. Hosts create each input with the "回复这段…" placeholder
+/// ([`DraftText::reply_placeholder`]). `jump` scrolls to the source passage; `remove` drops the
+/// draft (its passage loses the dotted underline in the transcript).
+pub fn drafts<V: 'static>(
     prefix: &str,
-    comments: &[DraftComment],
-    window: &mut Window,
+    drafts: Vec<DraftView>,
+    remove_label: &str,
     cx: &mut Context<V>,
-    edit: impl Fn(
-            &mut V,
-            DraftComment,
-            &ClickEvent,
-            gpui::Bounds<gpui::Pixels>,
-            &mut Window,
-            &mut Context<V>,
-        ) + 'static,
+    jump: impl Fn(&mut V, DraftComment, &mut Window, &mut Context<V>) + 'static,
     remove: impl Fn(&mut V, String, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
-    let edit = Rc::new(edit);
+    let jump = Rc::new(jump);
     let remove = Rc::new(remove);
     let p = ZORK_UI.palette;
+    let owner = cx.entity().downgrade();
     div()
         .id(id(prefix, "composer-comment-queue"))
+        .w_full()
+        .max_h(px(DRAFTS_MAX_HEIGHT))
+        .overflow_y_scroll()
         .flex()
         .flex_col()
-        .gap(px(2.))
-        .max_h(px(140.))
-        .overflow_y_scroll()
-        .children(comments.iter().cloned().map(|comment| {
-            let editing = comment.clone();
+        .gap(px(GAP))
+        .children(drafts.into_iter().map(|draft| {
+            let comment = draft.comment.clone();
             let key = comment.id.clone();
-            let edit = edit.clone();
+            let height = draft_input_height(draft.input.read(cx));
+            let input = draft.input.clone();
+            let jump = jump.clone();
+            let jump_owner = owner.clone();
+            let jump_comment = comment.clone();
             let remove = remove.clone();
-            let edit_id = id(prefix, &format!("comment-edit-{}", comment.id));
-            let focus = super::widgets::controls::action_focus(edit_id.clone(), window, cx);
-            let bounds = Rc::new(Cell::new(gpui::Bounds::default()));
-            let measured = bounds.clone();
-            super::widgets::panel::inline(id(prefix, &format!("queued-comment-{}", comment.id)))
+            let remove_key = key.clone();
+            let close = div()
+                .id(id(prefix, &format!("comment-remove-{key}")))
+                .flex_shrink_0()
+                .ml_auto()
+                .size(px(22.))
+                .rounded_full()
                 .flex()
                 .items_center()
-                .gap_2()
-                .px_2()
-                .py_2()
-                .rounded(px(crate::design::RADIUS.inline))
+                .justify_center()
+                .text_color(rgb(p.subtle))
+                .cursor_pointer()
+                .hover(|s| s.bg(rgb(INTERACTION.neutral_hover)).text_color(rgb(p.text)))
+                .child(ui::icon("icons/x.svg", 12.))
+                .on_click(cx.listener(move |v, _, _, cx| {
+                    cx.stop_propagation();
+                    remove(v, remove_key.clone(), cx)
+                }))
+                .automation(AutomationRole::Button, remove_label.to_owned());
+            div()
+                .id(id(prefix, &format!("queued-comment-{key}")))
+                .w_full()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(identity::passage_line(
+                    &id(prefix, &format!("comment-quote-{key}")),
+                    &draft.author,
+                    &comment.source.quote,
+                    Some(Rc::new(move |window, cx| {
+                        let jump = jump.clone();
+                        let comment = jump_comment.clone();
+                        let _ = jump_owner.update(cx, |v, cx| jump(v, comment, window, cx));
+                    })),
+                    Some(close.into_any_element()),
+                ))
                 .child(
                     div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .gap_1()
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(p.muted))
-                                .truncate()
-                                .child(format!(
-                                    "{}：{}",
-                                    comment.source.author.as_deref().unwrap_or("消息"),
-                                    comment.source.quote
-                                )),
-                        )
-                        .child(div().text_size(px(12.)).truncate().child(comment.comment)),
-                )
-                .child(
-                    ui::button(edit_id, "编辑", false, true)
-                        .control_focus(&focus)
-                        .control_overlay(
-                            gpui::canvas(move |bounds, _, _| measured.set(bounds), |_, _, _, _| {})
-                                .absolute()
-                                .inset_0()
-                                .into_any_element(),
-                        )
-                        .on_click(cx.listener(move |v, event, w, cx| {
-                            w.focus(&focus, cx);
-                            edit(v, editing.clone(), event, bounds.get(), w, cx);
-                        }))
-                        .automation(AutomationRole::Button, "编辑评论"),
-                )
-                .child(
-                    ui::icon_button(id(prefix, &format!("comment-remove-{}", comment.id)), true)
-                        .w(px(ui::CONTROL_HEIGHT))
-                        .h(px(ui::CONTROL_HEIGHT))
-                        .px_0()
-                        .border_0()
-                        .child(ui::icon("icons/x.svg", 12.))
-                        .on_click(cx.listener(move |v, _, _, cx| remove(v, key.clone(), cx)))
-                        .automation(AutomationRole::Button, "移除评论"),
+                        .id(id(prefix, &format!("comment-input-{key}")))
+                        .w_full()
+                        .h(px(height))
+                        .text_size(px(13.))
+                        .line_height(px(20.))
+                        .text_color(rgb(p.text))
+                        .overflow_hidden()
+                        .child(input.clone())
+                        .on_click(move |_, window, cx| {
+                            window.focus(&input.read(cx).focus_handle(), cx)
+                        })
+                        .automation(AutomationRole::TextInput, comment.source.quote.clone()),
                 )
         }))
+        .automation(AutomationRole::Status, "引用草稿")
         .into_any_element()
 }
+
+/// Wording of the draft queue, injected so clients keep their catalogs.
+#[derive(Clone, Debug)]
+pub struct DraftText {
+    pub reply_placeholder: String,
+    pub remove: String,
+    pub extra_placeholder: String,
+    pub duplicate: String,
+}
+impl Default for DraftText {
+    fn default() -> Self {
+        Self {
+            reply_placeholder: "回复这段…".into(),
+            remove: "移除这段引用".into(),
+            extra_placeholder: "补充说明（可选）".into(),
+            duplicate: "这段已经在引用里了".into(),
+        }
+    }
+}
+
+
+/// Whether `source` (same message and passage) is already drafted.
+pub fn already_drafted(comments: &[DraftComment], source: &crate::comments::CommentSource) -> bool {
+    let quote = source.quote.trim();
+    comments.iter().any(|comment| {
+        comment.source.message_id == source.message_id && comment.source.quote.trim() == quote
+    })
+}
+
 #[cfg(feature = "stories")]
 pub struct CommentsStory {
     prefix: String,
-    comments: Vec<DraftComment>,
+    comments: Vec<(DraftComment, Entity<ComposerInput>)>,
     editor: Entity<Editor>,
-    pending: Option<EditorRequest>,
-    anchor: Rc<Cell<gpui::Bounds<gpui::Pixels>>>,
-    next_id: usize,
 }
 #[cfg(feature = "stories")]
 impl CommentsStory {
     pub fn new(prefix: String, state: &str, cx: &mut Context<Self>) -> Self {
         let editor = cx.new(|cx| Editor::new(prefix.clone(), cx));
-        cx.subscribe(&editor, |v, _, event: &Submit, cx| {
-            let comment = DraftComment {
-                id: event.editing.clone().unwrap_or_else(|| {
-                    v.next_id += 1;
-                    format!("demo-{}", v.next_id)
-                }),
-                source: event.source.clone(),
-                comment: event.text.clone(),
-            };
-            if let Some(old) = v.comments.iter_mut().find(|old| old.id == comment.id) {
-                *old = comment;
-            } else {
-                v.comments.push(comment);
-            }
-            v.editor.update(cx, |editor, cx| editor.dismiss(cx));
-            cx.notify();
-        })
-        .detach();
-        let request = EditorRequest {
-            source: crate::comments::CommentSource {
-                session_id: "mock-session".into(),
-                author: Some("产品 Leader".into()),
-                quote: "请先统一图标与头像。".into(),
-                ..Default::default()
-            },
-            editing: (state == "editing").then(|| "demo".into()),
-            text: if state == "editing" {
-                "保持紧凑，文字需要清晰。".into()
-            } else {
-                String::new()
-            },
-            toolbar: false,
+        let draft = |id: &str, author: &str, quote: &str, text: &str, cx: &mut Context<Self>| {
+            let input = cx.new(|cx| ComposerInput::new("回复这段…", cx).multiline());
+            input.update(cx, |input, cx| input.reset_value(text.to_owned(), cx));
+            cx.subscribe(
+                &input,
+                |_, _, _: &crate::components::text_input::ComposerLayoutChanged, cx| cx.notify(),
+            )
+            .detach();
+            (
+                DraftComment {
+                    id: id.into(),
+                    source: crate::comments::CommentSource {
+                        session_id: "mock-session".into(),
+                        message_id: Some(format!("{id}-source")),
+                        author: Some(author.into()),
+                        quote: quote.into(),
+                        ..Default::default()
+                    },
+                    comment: text.into(),
+                },
+                input,
+            )
         };
-        let comments = if matches!(state, "queued" | "editing") {
-            vec![DraftComment {
-                id: "demo".into(),
-                source: request.source.clone(),
-                comment: "保持紧凑，文字需要清晰。".into(),
-            }]
-        } else {
-            vec![]
+        let comments = match state {
+            "queued" | "editing" => vec![
+                draft(
+                    "d1",
+                    "Planner",
+                    "键盘可以走完全部流程",
+                    "菜单里的 Tab 顺序也要一起测。",
+                    cx,
+                ),
+                draft("d2", "审阅助手", "触控区重叠", "", cx),
+            ],
+            _ => vec![],
         };
         Self {
             prefix,
             comments,
             editor,
-            pending: matches!(state, "compose" | "editing").then_some(request),
-            anchor: Default::default(),
-            next_id: 0,
         }
     }
 }
 #[cfg(feature = "stories")]
 impl gpui::Render for CommentsStory {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let bounds = self.anchor.get();
-        if bounds.size.width > px(0.) {
-            if let Some(request) = self.pending.take() {
-                let focus = window.focused(cx);
-                self.editor.update(cx, |editor, cx| {
-                    editor.open_at(request, bounds, focus, window, cx)
-                });
-            }
-        }
-        let anchor = self.anchor.clone();
-        let owner = cx.entity().downgrade();
-        let trigger = ui::button(id(&self.prefix, "add-comment"), "添加评论", false, true)
-            .control_overlay(
-                gpui::canvas(
-                    move |bounds, _, cx| {
-                        if anchor.replace(bounds) != bounds {
-                            let _ = owner.update(cx, |_, cx| cx.notify());
-                        }
-                    },
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .inset_0()
-                .into_any_element(),
-            )
-            .on_click(cx.listener(|v, _, window, cx| {
-                let bounds = v.anchor.get();
-                let focus = window.focused(cx);
-                v.editor.update(cx, |editor, cx| {
-                    editor.open_at(
-                        EditorRequest {
-                            source: crate::comments::CommentSource {
-                                session_id: "mock-session".into(),
-                                author: Some("产品 Leader".into()),
-                                quote: "请先统一图标与头像。".into(),
-                                ..Default::default()
-                            },
-                            editing: None,
-                            text: String::new(),
-                            toolbar: false,
-                        },
-                        bounds,
-                        focus,
-                        window,
-                        cx,
-                    )
-                });
-            }))
-            .automation(AutomationRole::Button, "添加评论");
-        let queue = queue(
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let views = self
+            .comments
+            .iter()
+            .map(|(comment, input)| DraftView {
+                comment: comment.clone(),
+                author: QuoteAuthor {
+                    name: comment.source.author.clone().unwrap_or_default(),
+                    disc: None,
+                },
+                input: input.clone(),
+            })
+            .collect();
+        let queue = drafts(
             &self.prefix,
-            &self.comments,
-            window,
+            views,
+            "移除这段引用",
             cx,
-            |v, comment, _, bounds, window, cx| {
-                let focus = window.focused(cx);
-                v.editor.update(cx, |editor, cx| {
-                    editor.open_at(
-                        EditorRequest {
-                            source: comment.source,
-                            editing: Some(comment.id),
-                            text: comment.comment,
-                            toolbar: false,
-                        },
-                        bounds,
-                        focus,
-                        window,
-                        cx,
-                    )
-                });
-            },
+            |_, _, _, _| {},
             |v, id, cx| {
-                v.comments.retain(|comment| comment.id != id);
+                v.comments.retain(|(comment, _)| comment.id != id);
                 cx.notify();
             },
         );
         div()
+            .p_4()
+            .w(px(520.))
+            .rounded(px(24.))
+            .bg(rgb(ZORK_UI.thread.user_fill))
             .flex()
             .flex_col()
             .gap_4()
-            .child(trigger)
             .child(queue)
             .child(self.editor.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drafts_band_grows_then_scrolls() {
+        assert_eq!(drafts_height([]), 0.);
+        assert_eq!(drafts_height([20.]), 20. + 2. + 20. + BOTTOM);
+        assert_eq!(drafts_height([20.; 10]), DRAFTS_MAX_HEIGHT + BOTTOM);
+    }
+
+    #[test]
+    fn duplicates_are_detected() {
+        let source = crate::comments::CommentSource {
+            message_id: Some("m1".into()),
+            quote: "触控区重叠".into(),
+            ..Default::default()
+        };
+        let draft = DraftComment {
+            id: "d".into(),
+            source: source.clone(),
+            comment: " ".into(),
+        };
+        assert!(already_drafted(std::slice::from_ref(&draft), &source));
+        let other = crate::comments::CommentSource {
+            message_id: Some("m2".into()),
+            ..source
+        };
+        assert!(!already_drafted(&[draft], &other));
     }
 }
