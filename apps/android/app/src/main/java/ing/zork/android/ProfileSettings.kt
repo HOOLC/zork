@@ -118,7 +118,9 @@ private fun ModelRow(row: JSONObject, enabled: Boolean, open: () -> Unit, enable
         Row(Modifier.weight(1f).heightIn(min = 56.dp).clip(ZorkShapes.Block).zorkPressable(onClick = open)
             .semantics { contentDescription = "编辑 $id" }
             .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // The row names a model: its maker's mark; the page heading carries the connection's.
+            MakerMark(row.text("maker").takeIf(String::isNotBlank), 18, if (row.optBoolean("enabled")) ZorkColors.Ink else ZorkColors.Muted)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(id, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)

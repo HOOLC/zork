@@ -972,6 +972,29 @@ fn inline_edit_save_and_remove() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Model rows carry the model maker's mark; the page header carries the
+/// connection's provider mark, even when the two differ.
+fn maker_and_provider_marks() -> anyhow::Result<()> {
+    let mut f = Fixture::new("makers", true)?;
+    ensure!(
+        f.label("profile-detail-provider-mark").as_deref() == Some("providers/compatible.svg"),
+        "connection mark {:?}",
+        f.label("profile-detail-provider-mark")
+    );
+    ensure!(
+        f.label("model-maker-qwen3-32b").as_deref() == Some("makers/qwen.svg"),
+        "model mark {:?}",
+        f.label("model-maker-qwen3-32b")
+    );
+    f.shot("makers-custom")?;
+    let f = Fixture::new("makers-vendor", false)?;
+    ensure!(f.label("profile-detail-provider-mark").as_deref() == Some("providers/openai.svg"));
+    ensure!(f.label("model-maker-gpt-5").as_deref() == Some("makers/openai.svg"));
+    // OpenAI's own API vouches for ids the catalog does not list.
+    ensure!(f.label("model-maker-fixture-model").as_deref() == Some("makers/openai.svg"));
+    Ok(())
+}
+
 fn fetch_counts() -> anyhow::Result<()> {
     let mut f = Fixture::new("fetch", false)?;
     f.click("profile-model-discover")?;
@@ -1041,7 +1064,7 @@ fn main() -> anyhow::Result<()> {
         state.path().join("preferences.json"),
     );
     let only = std::env::args().nth(1);
-    let checks: [(&str, fn() -> anyhow::Result<()>); 13] = [
+    let checks: [(&str, fn() -> anyhow::Result<()>); 14] = [
         ("suggestions", suggestions_and_keyboard),
         ("recognized", recognized_sections),
         ("modify", modify_restore_and_refill),
@@ -1054,6 +1077,7 @@ fn main() -> anyhow::Result<()> {
         ("custom", custom_protocol),
         ("inline", inline_edit_save_and_remove),
         ("fetch", fetch_counts),
+        ("makers", maker_and_provider_marks),
         ("typing", rapid_typing_and_long_ids),
     ];
     let mut failed = vec![];

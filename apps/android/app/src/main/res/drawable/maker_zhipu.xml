@@ -1,0 +1,4 @@
+<!-- Generated from crates/zork-ui/assets/makers/zhipu.svg; do not redraw. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+  <path android:pathData="m8 7-5 5 5 5m8-10 5 5-5 5M14 4l-4 16" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

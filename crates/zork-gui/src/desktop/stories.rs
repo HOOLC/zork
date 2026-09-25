@@ -718,7 +718,8 @@ fn raw_catalog() -> Vec<Story> {
         "new-chat",
     );
     picker.width = 900.;
-    picker.height = 700.;
+    // Tall enough for the router group, whose models carry other makers' marks.
+    picker.height = 860.;
     picker.actions = vec![click("new-chat-options")];
     items.push(picker);
     items

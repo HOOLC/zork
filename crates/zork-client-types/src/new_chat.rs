@@ -14,6 +14,10 @@ pub struct OptionItem {
     /// For model options: the device the connections are saved on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
+    /// For model options: who made the model (`deepseek`, `qwen`, …), whichever
+    /// connection serves it. Absent when unknown: pickers draw a generic mark.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maker: Option<String>,
 }
 /// A model connection as a picker names it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

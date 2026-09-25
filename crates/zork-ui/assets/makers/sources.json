@@ -1,0 +1,19 @@
+{
+  "status": "placeholder",
+  "note": "One mark per model maker key (zork_client_core::model_catalog::MAKERS), plus generic for unknown models. Every file is a placeholder copy until the unified icon redraw; replace files in place, names are stable.",
+  "makers": {
+    "openai": "copy of providers/openai.svg",
+    "anthropic": "copy of providers/anthropic.svg",
+    "google": "copy of providers/compatible.svg",
+    "deepseek": "copy of providers/compatible.svg",
+    "qwen": "copy of providers/compatible.svg",
+    "zhipu": "copy of providers/compatible.svg",
+    "doubao": "copy of providers/compatible.svg",
+    "moonshot": "copy of providers/kimi.svg",
+    "minimax": "copy of providers/compatible.svg",
+    "mistral": "copy of providers/compatible.svg",
+    "meta": "copy of providers/compatible.svg",
+    "xai": "copy of providers/xai.svg",
+    "generic": "copy of providers/compatible.svg"
+  }
+}

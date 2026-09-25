@@ -73,9 +73,15 @@ internal object SettingsStyle {
         }
     }
 }
+/** Mark of a connection's provider: anything that names a connection or service. */
+internal fun providerDrawable(provider: String) = when(provider) { "openai" -> R.drawable.provider_openai; "anthropic" -> R.drawable.provider_anthropic; "github-copilot" -> R.drawable.provider_githubcopilot; "kimi", "kimi-coding" -> R.drawable.provider_kimi; "openrouter" -> R.drawable.provider_openrouter; "xai" -> R.drawable.provider_xai; "opencode-go" -> R.drawable.provider_opencode; else -> R.drawable.provider_compatible }
 @Composable internal fun ProviderMark(provider: String, size: Int = 24) {
-    val id = when(provider) { "openai" -> R.drawable.provider_openai; "anthropic" -> R.drawable.provider_anthropic; "github-copilot" -> R.drawable.provider_githubcopilot; "kimi", "kimi-coding" -> R.drawable.provider_kimi; "openrouter" -> R.drawable.provider_openrouter; "xai" -> R.drawable.provider_xai; "opencode-go" -> R.drawable.provider_opencode; else -> R.drawable.provider_compatible }
-    Image(painterResource(id), null, Modifier.size(size.dp))
+    Image(painterResource(providerDrawable(provider)), null, Modifier.size(size.dp))
+}
+/** Mark of a model's maker (core `model_catalog::MAKERS` key): anything that names a model. */
+internal fun makerDrawable(maker: String?) = when(maker) { "openai" -> R.drawable.maker_openai; "anthropic" -> R.drawable.maker_anthropic; "google" -> R.drawable.maker_google; "deepseek" -> R.drawable.maker_deepseek; "qwen" -> R.drawable.maker_qwen; "zhipu" -> R.drawable.maker_zhipu; "doubao" -> R.drawable.maker_doubao; "moonshot" -> R.drawable.maker_moonshot; "minimax" -> R.drawable.maker_minimax; "mistral" -> R.drawable.maker_mistral; "meta" -> R.drawable.maker_meta; "xai" -> R.drawable.maker_xai; else -> R.drawable.maker_generic }
+@Composable internal fun MakerMark(maker: String?, size: Int = 18, tint: androidx.compose.ui.graphics.Color = ZorkColors.Ink) {
+    Glyph(makerDrawable(maker), size.dp, tint)
 }
 
 @Composable
