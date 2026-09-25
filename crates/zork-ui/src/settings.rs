@@ -435,11 +435,12 @@ pub fn device<V: 'static>(
                     .truncate()
                     .text_size(px(17.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(crate::device_name::label(
+                    .child(crate::device_name::tagged_label(
                         "settings-device-name",
                         data.name.clone(),
                         &data.status,
                         None,
+                        data.local.then_some(crate::network::LOCAL_TAG),
                     )),
             )
             .child(
