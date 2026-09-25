@@ -48,8 +48,7 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                 if (!switching) DeviceName(state.peer.name, state.peer.status)
             }
         }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val presence = rememberComposerPresence(WorkbenchState(), (maxWidth - 24.dp).value)
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.Center) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -60,14 +59,14 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                 }
                 if (switching) NewChatDeviceTabs(peers, state.peer, !data.optBoolean("busy"), selectDevice)
                 // The composer's outline covers the tabs' lower edge.
-                DraftComposer(text, emptyList(), editable, false, data.optBoolean("can_submit"), presence,
+                DraftComposer(text, emptyList(), editable, false, data.optBoolean("can_submit"),
                     if (switching) Modifier.offset(y = (-12).dp) else Modifier, 180.dp,
                     WorkbenchActions(draft = { value -> text = value; action("edit", value) }, send = { action("submit", text) }), showAttach = false)
                 val model = data.pickerChoice("model")
                 val thinking = data.pickerChoice("thinking")
                 val profile = data.pickerChoice("profile")
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (model.options.isNotEmpty()) ModelCapsule(model, thinking, editable) { picking = true }
+                    if (model.options.isNotEmpty()) ModelCapsule(model, thinking, editable, profile) { picking = true }
                     when {
                         data.optBoolean("busy") -> "正在创建 Chat…"
                         data.optBoolean("uncertain") -> "创建结果尚未确认，重试会继续同一次创建"

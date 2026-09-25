@@ -559,7 +559,7 @@ fn raw_catalog() -> Vec<Story> {
         story.height = 680.;
         items.push(story);
     }
-    // Session activity in the real Chat view: above the composer, at its width.
+    // Session activity in the real Chat view: the last item of the message list.
     for state in [
         "collapsed",
         "expanded",
@@ -710,18 +710,36 @@ fn raw_catalog() -> Vec<Story> {
         story.actions = actions;
         items.push(story);
     }
-    let mut picker = Story::new(
-        "new-chat",
-        "新建 Chat",
-        "picker",
-        "crates/zork-ui/src/new_chat/picker.rs",
-        "new-chat",
-    );
-    picker.width = 900.;
-    // Tall enough for the router group, whose models carry other makers' marks.
-    picker.height = 860.;
-    picker.actions = vec![click("new-chat-options")];
-    items.push(picker);
+    // The model panel: automatic connection, the connection list unfolded,
+    // then pinned to API (the trigger names it).
+    for (state, actions) in [
+        ("picker", vec![click("new-chat-options")]),
+        (
+            "picker-connections",
+            vec![click("new-chat-options"), click("new-chat-connection")],
+        ),
+        (
+            "picker-pinned",
+            vec![
+                click("new-chat-options"),
+                click("new-chat-connection"),
+                click("new-chat-connection-2"),
+            ],
+        ),
+    ] {
+        let mut picker = Story::new(
+            "new-chat",
+            "新建 Chat",
+            state,
+            "crates/zork-ui/src/new_chat/picker.rs",
+            "new-chat",
+        );
+        picker.width = 900.;
+        // Tall enough for the unfolded panel below the composer, clear of the trigger.
+        picker.height = 1000.;
+        picker.actions = actions;
+        items.push(picker);
+    }
     items
 }
 

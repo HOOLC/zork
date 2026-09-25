@@ -1,6 +1,7 @@
 //! Session activity: the live "who is doing what" preview of a member's
-//! Session. The host places it directly above the composer, at the composer's
-//! width; it is a read-only projection, never a Chat message.
+//! Session. The host places it as the last item of the message list, right
+//! after the latest message and at the message column's width, so it scrolls
+//! with the messages; it is a read-only projection, never a Chat message.
 //!
 //! Collapsed it is one 36 px capsule on the sunken fill: a persimmon dot while
 //! running, the member, and the current step. Expanded, the same surface grows

@@ -109,6 +109,12 @@ harness = false
 required-features = ["headless-bench"]
 
 [[test]]
+name = "headless_transcript_activity"
+path = "tests/headless_transcript_activity.rs"
+harness = false
+required-features = ["headless-bench"]
+
+[[test]]
 name = "headless_history"
 path = "tests/headless_history.rs"
 harness = false

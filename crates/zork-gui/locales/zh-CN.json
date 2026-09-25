@@ -25,6 +25,8 @@
   "new_chat_profile_auto": "Profile · 自动",
   "new_chat_choose_profile": "选择 Profile",
   "new_chat_model_profile": "模型与 Profile",
+  "new_chat_connection": "连接",
+  "new_chat_connection_auto": "自动",
   "new_chat_profile_automatic": "自动选择",
   "new_chat_retry": "重试创建",
   "new_chat_creating": "正在创建 Chat…",

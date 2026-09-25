@@ -1,0 +1,4 @@
+<!-- Generated from crates/zork-ui/assets/icons/sparkles.svg; do not redraw. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+  <path android:pathData="M9 3c.7 5 2 6.3 7 7-5 .7-6.3 2-7 7-.7-5-2-6.3-7-7 5-.7 6.3-2 7-7Zm9 11c.4 3 1.2 3.6 4 4-2.8.4-3.6 1.2-4 4-.4-2.8-1-3.6-4-4 3-.4 3.6-1 4-4ZM19 2v6m-3-3h6" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

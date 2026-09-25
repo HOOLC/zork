@@ -439,6 +439,7 @@ private fun ChatFilesSheet(messages: List<ChatMessage>, state: FileAvailability,
 
 private class MessageTailAnchor(var activityCursor: Long) {
     var appliedRows: List<ChatMessage>? = null
+    var appliedActivity: ConversationActivity? = null
     val arrivals = LinkedHashMap<String, Long>()
 }
 private class ReferenceKey(private val value: Any) {
@@ -569,16 +570,11 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
     // Measure the floating controls before the list in this same layout pass.
     // No onSizeChanged round trip can leave a frame with obsolete bottom space.
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val presence = rememberComposerPresence(state, maxWidth.value - 24f)
-        val reservedExtent = presence.targetExtent
-        // Keep the reading anchor if a drag interrupts an active transition.
-        val beganAtTail = remember(reservedExtent) { following }
+        val activity = rememberConversationActivity(state)
         val availableHeight = maxHeight
         val gutter = 18.dp
         ConversationViewport(
             listState = listState,
-            presence = presence,
-            trackTail = beganAtTail || following,
             follow = following && !touching && scrollJob?.isActive != true,
             tailIndex = rows.size + 1,
             overlay = {
@@ -600,11 +596,11 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                     val commentLimit = (availableHeight * .25f).coerceAtMost(160.dp)
                     if (state.comments.isNotEmpty()) CommentTray(state.comments, actions, commentLimit)
                     val composerLimit = (availableHeight - (if (state.comments.isEmpty()) 0.dp else commentLimit + 8.dp) - 40.dp).coerceAtLeast(100.dp)
-                    Composer(state, actions, presence, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), composerLimit) { actions.send() }
+                    Composer(state, actions, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), composerLimit) { actions.send() }
                 }
             },
         ) { overlayBaseHeight ->
-            val bottomPadding = remember(overlayBaseHeight, reservedExtent) { ComposerMessagePadding(gutter, overlayBaseHeight, reservedExtent) }
+            val bottomPadding = remember(overlayBaseHeight) { ComposerMessagePadding(gutter, overlayBaseHeight) }
             val now = android.os.SystemClock.uptimeMillis()
             val freshCount = (state.messageActivity.sequence - anchor.activityCursor).coerceAtLeast(0)
             state.messageActivity.recent.filter { it.sequence > anchor.activityCursor }.forEach {
@@ -615,6 +611,10 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
             SideEffect {
                 val rowsChanged = anchor.appliedRows !== rows
                 anchor.appliedRows = rows
+                // The activity is the trailing item: while following, its
+                // appearance or change keeps the tail in view like a new row.
+                val activityChanged = anchor.appliedActivity != activity
+                anchor.appliedActivity = activity
                 anchor.activityCursor = state.messageActivity.sequence
                 if (rows.isNotEmpty() && !initialized) {
                     listState.requestScrollToItem(rows.size + 1)
@@ -622,7 +622,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                 } else if (freshCount > 0) {
                     if (following && !touching) followTail()
                     else unread = (unread.toLong() + freshCount).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-                } else if (rowsChanged && following && rows.isNotEmpty() && scrollJob?.isActive != true) {
+                } else if ((rowsChanged || activityChanged) && following && !touching && rows.isNotEmpty() && scrollJob?.isActive != true) {
                     listState.requestScrollToItem(rows.size + 1)
                 }
             }
@@ -665,9 +665,11 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                 }
                 // Padding is a list measure input, so animated clearance is applied
                 // immediately rather than waiting for a lazy spacer to recompose.
+                // Live activity follows the latest message, so it waits while
+                // newer messages are still unloaded.
                 item(key = "conversation-bottom") {
                     if (messageState.newer) ZorkButton("加载更新消息", quiet = true, onClick = messageActions.newer, enabled = !messageState.busy)
-                    else Spacer(Modifier.height(0.dp))
+                    else ConversationActivityItem(activity, actions.history)
                 }
             }
 
@@ -683,11 +685,11 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
 private data class ConversationMessageState(val sessionId: String?, val firstDate: String, val empty: Boolean,
     val connected: Boolean, val historyLoading: Boolean, val older: Boolean, val busy: Boolean, val newer: Boolean)
 
-private class ComposerMessagePadding(private val horizontal: Dp, private val base: Dp, private val reservedExtent: Float) : PaddingValues {
+private class ComposerMessagePadding(private val horizontal: Dp, private val base: Dp) : PaddingValues {
     override fun calculateLeftPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection) = horizontal
     override fun calculateRightPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection) = horizontal
     override fun calculateTopPadding() = 20.dp
-    override fun calculateBottomPadding() = base + reservedExtent.dp + 20.dp
+    override fun calculateBottomPadding() = base + 20.dp
 }
 
 private class ConversationBodySlot {
@@ -697,19 +699,17 @@ private class ConversationBodySlot {
 }
 
 @Composable
-private fun ConversationViewport(listState: LazyListState, presence: ComposerPresence, trackTail: Boolean, follow: Boolean, tailIndex: Int,
+private fun ConversationViewport(listState: LazyListState, follow: Boolean, tailIndex: Int,
     overlay: @Composable () -> Unit, content: @Composable (Dp) -> Unit) {
     val geometry = remember { intArrayOf(-1, -1, -1, -1) }
     val slot = remember { ConversationBodySlot() }
     androidx.compose.ui.layout.SubcomposeLayout(Modifier.fillMaxSize().clipToBounds().preferredFrameRate(120f)) { constraints ->
         val controls = subcompose("controls", overlay).map { it.measure(constraints.copy(minHeight = 0)) }
-        val overlayHeight = controls.maxOfOrNull { it.height } ?: 0
-        val baseHeight = overlayHeight - presence.extentPixels(density)
-        val reservedHeight = baseHeight + (presence.targetExtent * density).toInt()
-        if (geometry[0] != constraints.maxWidth || geometry[1] != reservedHeight || geometry[2] != constraints.maxHeight) {
+        val baseHeight = controls.maxOfOrNull { it.height } ?: 0
+        if (geometry[0] != constraints.maxWidth || geometry[1] != baseHeight || geometry[2] != constraints.maxHeight) {
             if (follow) listState.requestScrollToItem(tailIndex)
             geometry[0] = constraints.maxWidth
-            geometry[1] = reservedHeight
+            geometry[1] = baseHeight
             geometry[2] = constraints.maxHeight
         }
         if (slot.content == null || slot.base != baseHeight || slot.parent !== content) {
@@ -719,15 +719,13 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerPre
             }
             slot.base = baseHeight; slot.parent = content
         }
-        // Extra rows above the viewport remain recorded during downward layer
-        // translation. The list's geometry changes only at retarget/resize, not
-        // on every spring sample; the visible tail still tracks that sample.
-        val overscan = ((presence.members.size * 48f + 48f) * density).toInt()
+        // Extra rows above the viewport stay recorded, so a resize that
+        // retargets the tail has the rows it reveals already composed.
+        val overscan = (48f * density).toInt()
         val body = subcompose("messages", slot.content!!)
             .map { it.measure(androidx.compose.ui.unit.Constraints.fixed(constraints.maxWidth, constraints.maxHeight + overscan)) }
         layout(constraints.maxWidth, constraints.maxHeight) {
-            val translation = if (trackTail) ((presence.targetExtent - presence.extent) * density).roundToInt() else 0
-            body.forEach { it.place(0, -overscan + translation) }
+            body.forEach { it.place(0, -overscan) }
             controls.forEach { it.place(0, constraints.maxHeight - it.height) }
         }
     }
@@ -788,11 +786,10 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
 }
 
 @Composable
-private fun ComposerPlate(presence: ComposerPresence, modifier: Modifier, history: (String, String) -> Unit, body: @Composable () -> Unit) {
-    // The editor receives constant constraints during presence motion. In a
-    // Column, the changing header consumed its max height and remeasured the
-    // text editor on every frame despite its unchanged three-line viewport.
-    androidx.compose.ui.layout.Layout(modifier = modifier, content = { ComposerMembers(presence, history); body() }) { measurables, constraints ->
+private fun ComposerPlate(modifier: Modifier, body: @Composable () -> Unit) {
+    // A fixed top slot above the controls; member activity lives in the message
+    // list, never on the composer. The editor keeps constant constraints.
+    androidx.compose.ui.layout.Layout(modifier = modifier, content = { Spacer(Modifier.fillMaxWidth().height(40.dp)); body() }) { measurables, constraints ->
         val controls = measurables[1].measure(constraints.copy(minHeight = 0))
         val header = measurables[0].measure(constraints.copy(minHeight = 0))
         layout(constraints.maxWidth, controls.height + header.height) {
@@ -803,7 +800,7 @@ private fun ComposerPlate(presence: ComposerPresence, modifier: Modifier, histor
 }
 
 @Composable
-private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp, send: () -> Unit) {
+private fun Composer(state: WorkbenchState, actions: WorkbenchActions, modifier: Modifier, heightLimit: Dp, send: () -> Unit) {
     val attached = state.comments.size + state.attachments.size + state.draftFiles.size
     val command = remember(state.draft, attached, state.running, state.connected, state.busy, state.conversation) {
         JSONObject(NativeBridge.composerState(JSONObject().put("text", state.draft)
@@ -825,16 +822,16 @@ private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence:
             openDraftFile = { latest.value.openDraftFile(it) }, removeFile = { latest.value.removeFile(it) },
             dismissPendingFile = { latest.value.dismissPendingFile(it) })
     }
-    DraftComposer(draft, attachments, canSend, stop, enabled, presence, modifier, heightLimit, controls, actions.history,
+    DraftComposer(draft, attachments, canSend, stop, enabled, modifier, heightLimit, controls,
         files = state.draftFiles, pending = state.attaching)
 }
 
 @Composable
 internal fun DraftComposer(draft: String, attachments: List<TextAttachmentUi>, canEdit: Boolean,
-    stop: Boolean, enabled: Boolean, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp,
-    actions: WorkbenchActions, history: (String, String) -> Unit = { _, _ -> }, showAttach: Boolean = true,
+    stop: Boolean, enabled: Boolean, modifier: Modifier, heightLimit: Dp,
+    actions: WorkbenchActions, showAttach: Boolean = true,
     files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList()) {
-    ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f), history) {
+    ComposerPlate(modifier.fillMaxWidth().preferredFrameRate(120f)) {
         ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach, files, pending)
     }
 }

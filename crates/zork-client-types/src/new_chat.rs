@@ -11,10 +11,16 @@ pub struct OptionItem {
     /// it differs from the display name in `label`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine: Option<String>,
-    /// For model options: the connections that offer this model, in list order,
-    /// so pickers can group models by connection. Empty for other choices.
+    /// For model options: the connections that offer this model, in list order;
+    /// a picker lists the model once and offers these as optional pins.
+    /// For the automatic connection option: the connections it may use for the
+    /// current model and thinking (the node picks one per call). Empty otherwise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connections: Vec<ConnectionRef>,
+    /// For connection options: the provider behind the connection, for its
+    /// mark. Absent for the automatic choice and for other choices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// For model options: the device the connections are saved on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
@@ -43,6 +49,8 @@ pub struct Snapshot {
     pub device: Choice,
     pub model: Choice,
     pub thinking: Choice,
+    /// The connection: `auto` (default) or a pinned profile id. Options are
+    /// `auto` first, then only the connections that serve the current model.
     pub profile: Choice,
     pub editable: bool,
     pub can_submit: bool,
@@ -59,8 +67,11 @@ pub struct Snapshot {
 pub enum Action {
     Begin,
     Edit { text: String },
+    /// Picks a model. A pinned connection stays while it serves the model;
+    /// otherwise the connection returns to automatic.
     Model { value: String },
     Thinking { value: String },
+    /// Pins a connection serving the current model, or `auto`.
     Profile { value: String },
     /// Picks a model from one connection in a single step.
     Select { profile: String, model: String },
