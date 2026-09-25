@@ -1,9 +1,10 @@
 # Shared interface assets
 
-Central Icons masters retain their package exports and stroke adjustments in
-`icons.json`. Inter font files retain their original SIL Open Font License.
-Original import provenance is recorded in the design package's
-`licenses/shared-resource-origins.md`; no external checkout is needed to build.
+The SVG masters are original Zork soft-line artwork: 24 × 24, 1.75 stroke,
+round caps and joins, currentColor paint. See the [redraw style](../../../../design/icon-redraw/STYLE.md).
+`icons.json` records the current artwork and preserves historical Central Icons
+import provenance under `originalImport`; those imports are no longer the masters.
+Original license files remain. Inter retains its SIL Open Font License.
 
-Runtime callers use the registered `interface/` paths. The product's own marks,
-avatars and provider logos live in their corresponding asset families.
+Runtime callers continue to use the registered `interface/` paths. Company
+logos live in `providers/` and `makers/` and remain their owners’ trademarks.

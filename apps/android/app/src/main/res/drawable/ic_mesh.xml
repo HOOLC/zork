@@ -1,7 +1,4 @@
-<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/icons/mesh.svg; do not redraw. -->
+<!-- Generated from crates/zork-ui/assets/icons/mesh.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-  <path android:pathData="M7.8 5.9h8.4M6.7 8.4l4 7.2m6.6-7.2-4 7.2" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillAlpha=".5" />
-  <path android:pathData="M2.65 5.8a2.65 2.65 0 1 0 5.3 0a2.65 2.65 0 1 0 -5.3 0Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
-  <path android:pathData="M16.05 5.8a2.65 2.65 0 1 0 5.3 0a2.65 2.65 0 1 0 -5.3 0Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
-  <path android:pathData="M9.35 18.0a2.65 2.65 0 1 0 5.3 0a2.65 2.65 0 1 0 -5.3 0Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="M3.0 5.5a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0ZM16.0 5.5a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0ZM9.5 18.5a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0ZM8 5.5h8M6.7 7.8l4.1 8.4m6.5-8.4-4.1 8.4" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>
