@@ -144,7 +144,10 @@ impl Page {
                 let content = match &option.status {
                     Some(status) => crate::device_name::label(
                         format!("new-chat-device-name-{i}"),
-                        option.label.clone(),
+                        crate::device_name::DeviceName::new(
+                            option.label.clone(),
+                            option.machine.clone(),
+                        ),
                         status,
                         Some(&self.text),
                     )
@@ -187,7 +190,12 @@ impl Page {
                         cx.notify();
                     }
                 }))
-                .automation_enabled(editable, AutomationRole::Button, option.label.clone())
+                .automation_enabled(
+                    editable,
+                    AutomationRole::Button,
+                    crate::device_name::DeviceName::new(option.label.clone(), option.machine.clone())
+                        .accessible(),
+                )
             }))
             .into_any_element()
     }

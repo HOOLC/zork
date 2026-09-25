@@ -492,7 +492,7 @@ fn raw_catalog() -> Vec<Story> {
         (
             "device",
             "设备设置",
-            &["running", "stopped", "loading", "error"][..],
+            &["running", "stopped", "loading", "error", "renaming", "rename-error"][..],
         ),
         ("mesh", "设备连接", &["connected", "empty", "manual"][..]),
         (
@@ -570,7 +570,7 @@ fn raw_catalog() -> Vec<Story> {
         story.height = 680.;
         items.push(story);
     }
-    // Session activity in the real Chat view: above the composer, at its width.
+    // Session activity in the real Chat view: the last item of the message list.
     for state in [
         "collapsed",
         "expanded",
@@ -1057,7 +1057,7 @@ impl StoryHost {
                             .trim_end_matches("-compact")
                             .trim_end_matches("-wide")
                             .into(),
-                        zork_client_core::device_edit::validate_name,
+                        zork_client_core::device_edit::validate_story_display_name,
                         cx,
                     )
                 })

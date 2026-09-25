@@ -45,6 +45,10 @@ pub(super) async fn discover(state: &AppState, who: &Subject, args: &Value) -> R
         }
     }
     nodes.sort_by_key(|value| value["target"].to_string());
+    let devices = node_access::device_names(state);
+    for value in nodes.iter_mut().chain(unavailable.iter_mut()) {
+        node_access::name_entry(&devices, value, "target");
+    }
     Ok(json!({"nodes":nodes,"unavailable_nodes":unavailable}))
 }
 

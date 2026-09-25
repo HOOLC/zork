@@ -10,6 +10,8 @@ use gpui::{prelude::*, *};
 pub struct Node {
     pub id: String,
     pub name: String,
+    /// Registered machine name, when it differs from the display `name`.
+    pub machine: Option<String>,
     pub status: crate::device_name::DeviceStatus,
     pub remote: bool,
 }
@@ -181,7 +183,10 @@ pub trait Host: Sized + 'static {
                                             .text_ellipsis()
                                             .child(crate::device_name::label(
                                                 format!("directory-name-{}", node.id),
-                                                node.name.clone(),
+                                                crate::device_name::DeviceName::new(
+                                                    node.name.clone(),
+                                                    node.machine.clone(),
+                                                ),
                                                 &node.status,
                                                 None,
                                             )),
@@ -318,6 +323,7 @@ impl Story {
                         status: crate::device_name::DeviceStatus::Direct,
                         id: "demo".into(),
                         name: "演示设备".into(),
+                        machine: None,
                         remote: true,
                     }]
                 },

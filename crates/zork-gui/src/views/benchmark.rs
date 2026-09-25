@@ -48,6 +48,13 @@ impl RootView {
     pub fn benchmark_transcript_len(&self) -> usize {
         self.lines.len()
     }
+    /// Top and bottom of a rendered transcript item in window coordinates;
+    /// `lines.len()` is the trailing live activity item.
+    pub fn benchmark_transcript_item_bounds(&self, index: usize) -> Option<(f32, f32)> {
+        self.transcript_list
+            .bounds_for_item(index)
+            .map(|bounds| (bounds.top().as_f32(), bounds.bottom().as_f32()))
+    }
     pub fn benchmark_file_geometry(&self) -> serde_json::Value {
         serde_json::json!({
             "composer_width":self.composer_surface_width,
@@ -151,7 +158,7 @@ impl RootView {
         store: Arc<crate::desktop::store::ClientStore>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let node = crate::desktop::store::SavedNode {
+        let node = crate::desktop::store::SavedNode { machine_name: None, color_key: None,
             id: "mini1".into(),
             name: "mini1".into(),
             url: "http://127.0.0.1:9".into(),
@@ -345,7 +352,7 @@ impl RootView {
         };
         self.benchmark_replace_messages(
             vec![
-                line(true, "先把会话动态按定稿重做：放到输入框上方，和输入框同宽。"),
+                line(true, "先把会话动态按定稿重做：放到消息列表最后，跟着消息滚动。"),
                 line(false, "好的。我先读一下现在的实现和定稿，再改布局和动效。\n\n- 收起时一行：谁、在做什么\n- 展开时最近三步和完整历史"),
                 line(true, "改完跑一下相关的测试。"),
             ],
@@ -410,7 +417,6 @@ impl RootView {
             participant.activity = None;
         }
         self.sync_session_activity(cx);
-        zork_ui::components::region::invalidate(cx, &["composer"]);
     }
 
     fn benchmark_activity_records(step: usize) -> Vec<crate::session_history::Record> {

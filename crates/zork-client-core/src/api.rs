@@ -127,6 +127,10 @@ pub struct MeshStatus {
     pub origin: Option<String>,
     #[serde(default)]
     pub group: Option<zork_config::membership::MeshGroup>,
+    /// The authority's display names as this Station last received them.
+    /// Older Stations do not send it.
+    #[serde(default)]
+    pub names: Option<zork_config::membership::MeshNames>,
     #[serde(default)]
     pub peers: Vec<MeshPeer>,
 }

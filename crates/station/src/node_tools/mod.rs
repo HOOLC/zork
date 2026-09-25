@@ -132,7 +132,8 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     let target = args
         .get("target")
         .and_then(Value::as_str)
-        .map(str::to_owned)
+        .map(|target| node_access::resolve_target(state, target))
+        .transpose()?
         .or_else(|| {
             if matches!(
                 input.tool.as_str(),
@@ -148,6 +149,11 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
             }
         })
         .unwrap_or_else(|| "local".into());
+    // Remote Stations check `target` against their own identity.
+    let mut args = args;
+    if args.get("target").is_some() {
+        args["target"] = json!(target);
+    }
     let rpc = Rpc {
         interrupt: false,
         subject: who.clone(),
@@ -256,6 +262,10 @@ async fn list(state: &AppState, who: &Subject) -> Result<Value> {
         }
     }
     targets.sort_by_key(|v| v["target"].to_string());
+    let devices = node_access::device_names(state);
+    for value in targets.iter_mut().chain(unavailable.iter_mut()) {
+        node_access::name_entry(&devices, value, "target");
+    }
     Ok(
         json!({"current_target":node_access::identity(state),"targets":targets,"unavailable_nodes":unavailable}),
     )

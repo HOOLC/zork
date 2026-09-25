@@ -152,7 +152,13 @@ private fun task(id: String, title: String, unread: Int = 0) = obj("chat_id" to 
 private fun fixturePeers() = listOf(
     Peer("mini1","mini1","", JSONObject("""{"status":{"state":"direct"}}""").deviceStatus()),
     Peer("mini2","mini2","", JSONObject("""{"status":{"state":"offline"}}""").deviceStatus()))
+/** Mesh devices as core names them: short display names, machine names kept. */
+private fun namedPeers() = listOf(
+    Peer("air","A","", JSONObject("""{"status":{"state":"direct"}}""").deviceStatus(), machine="zuozijiandeMacBook-Air", colorKey="seq:0"),
+    Peer("studio","B","", JSONObject("""{"status":{"state":"relay"}}""").deviceStatus(), machine="zuozijians-Mac-Studio", colorKey="seq:1"),
+    Peer("mini1","mini1","", JSONObject("""{"status":{"state":"offline"}}""").deviceStatus()))
 private fun fixture(route: String): WorkbenchState {
+    if (route == "device-names") return fixture("navigation").let { it.copy(peers=namedPeers(), activePeer=namedPeers()[0]) }
     val peers = fixturePeers()
     val product = leader("product","产品 Leader","fox"); val engineering = leader("engineering","工程 Leader","dog"); val research = leader("research","研究 Leader","owl")
     val tasks = mapOf("product" to listOf(task("guide","品牌规范整理",1), task("brand","品牌资源接入")), "engineering" to listOf(task("offline","离线恢复怎么处理",2)))
@@ -217,7 +223,7 @@ private fun fixtureSettings(): MobileSettingsState {
         obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") }),"providers" to org.json.JSONArray(providers)),
         obj("peer" to "mini2","name" to "mini2","state" to "failed","error" to "连接超时","cached" to true,"loaded_at_ms" to System.currentTimeMillis() - 12 * 60_000,
             "profiles" to org.json.JSONArray().put(failedProfile),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter"))))
-    return MobileSettingsState(page="device",device=Peer("mini1","工作室的 MacBook Air",""),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,
+    return MobileSettingsState(page="device",device=Peer("mini1","B","",machine="工作室的 MacBook Air"),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,
         info=obj("name" to "工作室的 MacBook Air","station" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))
 }
 

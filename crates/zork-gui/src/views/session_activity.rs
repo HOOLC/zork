@@ -159,8 +159,26 @@ impl SessionActivityPreview {
     }
 }
 
+/// Builds the activity row of the transcript. The message list calls it for
+/// its trailing item, so it is rebuilt on every frame the row is laid out.
+pub(super) type ActivityRow = Rc<dyn Fn(&mut Window, &mut gpui::App) -> gpui::AnyElement>;
+
 impl RootView {
+    /// The activity is the transcript's trailing item: a change of its
+    /// content or height remeasures that item, so scrolling to the end,
+    /// following the tail and the scrollbar see its current height.
+    pub(super) fn invalidate_session_activity(&mut self, cx: &mut Context<Self>) {
+        let tail = self.lines.len();
+        self.transcript_list.remeasure_items(tail..tail + 1);
+        zork_ui::components::region::invalidate(cx, &["transcript"]);
+    }
+
     pub(super) fn sync_session_activity(&mut self, cx: &mut Context<Self>) {
+        self.sync_session_activity_preview(cx);
+        self.invalidate_session_activity(cx);
+    }
+
+    fn sync_session_activity_preview(&mut self, cx: &mut Context<Self>) {
         let working = |participant: &crate::api::ParticipantStatus| {
             !participant.session_id.is_empty()
                 && participant.activity.as_ref().is_some_and(|status| {
@@ -246,7 +264,7 @@ impl RootView {
                     .update(cx, |view, cx| {
                         if still(view) {
                             view.session_activity_preview.as_mut().unwrap().leaving = true;
-                            zork_ui::components::region::invalidate(cx, &["composer"]);
+                            view.invalidate_session_activity(cx);
                         }
                     })
                     .is_err()
@@ -262,25 +280,24 @@ impl RootView {
                 let _ = this.update(cx, |view, cx| {
                     if still(view) {
                         view.session_activity_preview = None;
-                        zork_ui::components::region::invalidate(cx, &["composer", "transcript"]);
+                        view.invalidate_session_activity(cx);
                     }
                 });
             }));
         }
     }
 
-    /// The activity band above the composer, at the composer's width. It
-    /// shows the member's Session preview, or the live status while its
-    /// records have not arrived. Its height is part of the measured composer
-    /// overlay, so the message list reserves it like the composer itself.
+    /// The live activity row, the last item of the message list at the
+    /// message column's width. It shows the member's Session preview, or the
+    /// live status while its records have not arrived. The presence is
+    /// stepped here, in the transcript's render, so the enter and exit keep
+    /// their progress while the row is scrolled out of the virtualized list.
     pub(super) fn render_session_activity(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Option<gpui::AnyElement> {
-        use zork_ui::components::activity::{
-            Actions, Labels, Phase, SessionActivity,
-        };
+    ) -> Option<ActivityRow> {
+        use zork_ui::components::activity::{Actions, Labels, Phase, SessionActivity};
         let locale = self.locale;
         let offline = !self.agent_online;
         let labels = Labels {
@@ -363,68 +380,71 @@ impl RootView {
         );
         let (session, data, _) = match (frame, data) {
             (Some(_), Some(data)) => data,
-            _ => {
-                self.note_session_activity_height(false, cx);
-                return None;
-            }
+            _ => return None,
         };
         let frame = frame.unwrap();
         let root = cx.entity().downgrade();
         let open_root = root.clone();
         let stop_root = root.clone();
         let running = data.phase == Phase::Running;
-        let (element, moving) = zork_ui::components::activity::render_session(
-            &data,
-            Actions {
-                expand: Rc::new(move |cx| {
-                    let _ = root.update(cx, |view, cx| {
-                        if let Some(preview) = view.session_activity_preview.as_mut() {
-                            preview.expanded = !preview.expanded;
-                            zork_ui::components::region::invalidate(cx, &["composer"]);
-                        }
-                    });
-                }),
-                open: Rc::new(move |entry, cx| {
-                    let session = session.clone();
-                    let _ = open_root.update(cx, |view, cx| match entry {
-                        Some(entry) => view.open_history_entry(&session, entry, cx),
-                        None => view.open_history(&session, cx),
-                    });
-                }),
-                stop: (running && !self.canceling).then(|| {
-                    Rc::new(move |cx: &mut gpui::App| {
-                        let _ = stop_root.update(cx, |view, cx| view.cancel_session(cx));
-                    }) as Rc<dyn Fn(&mut gpui::App)>
-                }),
-            },
-            window,
-            cx,
-        );
-        // Height changes while expanding, collapsing or appearing: the cached
-        // composer region must remeasure on those frames.
-        self.note_session_activity_height(true, cx);
-        if moving || frame.opacity < 1. {
-            zork_ui::components::region::invalidate(cx, &["composer"]);
-        }
-        Some(
+        let expand: Rc<dyn Fn(&mut gpui::App)> = Rc::new(move |cx| {
+            let _ = root.update(cx, |view, cx| {
+                if let Some(preview) = view.session_activity_preview.as_mut() {
+                    preview.expanded = !preview.expanded;
+                    view.invalidate_session_activity(cx);
+                }
+            });
+        });
+        let open: Rc<dyn Fn(Option<String>, &mut gpui::App)> = Rc::new(move |entry, cx| {
+            let session = session.clone();
+            let _ = open_root.update(cx, |view, cx| match entry {
+                Some(entry) => view.open_history_entry(&session, entry, cx),
+                None => view.open_history(&session, cx),
+            });
+        });
+        let stop = (running && !self.canceling).then(|| {
+            Rc::new(move |cx: &mut gpui::App| {
+                let _ = stop_root.update(cx, |view, cx| view.cancel_session(cx));
+            }) as Rc<dyn Fn(&mut gpui::App)>
+        });
+        let width = self.composer_surface_width;
+        let data = Rc::new(data);
+        Some(Rc::new(move |window: &mut Window, cx: &mut gpui::App| {
+            let (element, moving) = zork_ui::components::activity::render_session(
+                &data,
+                Actions {
+                    expand: expand.clone(),
+                    open: open.clone(),
+                    stop: stop.clone(),
+                },
+                window,
+                cx,
+            );
+            // Expanding, collapsing and step changes resize the row: keep
+            // laying the list out until the transition settles.
+            if moving {
+                window.request_animation_frame();
+            }
+            // Same row geometry as a message: the message column, centered.
             div()
-                .w(px(self.composer_surface_width))
-                .max_w_full()
-                .pb(px(12.))
-                .flex_shrink_0()
-                .relative()
-                .top(px(zork_ui::motion::ROW_OFFSET * frame.travel))
-                .opacity(frame.opacity)
-                .child(element)
-                .into_any_element(),
-        )
-    }
-
-    fn note_session_activity_height(&mut self, shown: bool, cx: &mut Context<Self>) {
-        if self.session_activity_shown != shown {
-            self.session_activity_shown = shown;
-            zork_ui::components::region::invalidate(cx, &["composer"]);
-        }
+                .id("session-activity-row")
+                .w_full()
+                .px_6()
+                .pt(px(12.))
+                .pb(px(7.))
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .w(px(width))
+                        .max_w_full()
+                        .relative()
+                        .top(px(zork_ui::motion::ROW_OFFSET * frame.travel))
+                        .opacity(frame.opacity)
+                        .child(element),
+                )
+                .into_any_element()
+        }))
     }
 
     fn observe_session_activity(&mut self, restart: bool, cx: &mut Context<Self>) {
@@ -492,7 +512,9 @@ impl RootView {
         if let Some(update) = updates.prepare() {
             preview.apply(&update.state, self.locale);
             updates.acknowledge(update.batch.unwrap());
-            zork_ui::components::region::invalidate(cx, &["composer"]);
+            preview.updates = Some(updates);
+            self.invalidate_session_activity(cx);
+            return;
         }
         preview.updates = Some(updates);
     }

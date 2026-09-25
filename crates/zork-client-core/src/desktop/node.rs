@@ -173,6 +173,8 @@ impl LocalNode {
             Some(config.admin.token.clone())
         };
         let mut node = SavedNode {
+            machine_name: None,
+            color_key: None,
             id,
             name: if config.mesh.name.is_empty() {
                 "本机设备".into()

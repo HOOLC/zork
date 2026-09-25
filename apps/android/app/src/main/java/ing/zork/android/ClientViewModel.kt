@@ -24,7 +24,13 @@ internal fun JSONArray?.objects(): List<JSONObject> =
 internal fun JSONObject.text(key: String, fallback: String = ""): String =
     if (isNull(key)) fallback else optString(key, fallback)
 
-internal data class Peer(val id: String, val name: String, val address: String, val status: DeviceStatusUi = DeviceStatusUi())
+/** A device as the core names it: `name` is the Mesh display name, `machine` the
+ * name it registered with when that differs. */
+internal data class Peer(val id: String, val name: String, val address: String, val status: DeviceStatusUi = DeviceStatusUi(),
+    val machine: String? = null, val colorKey: String? = null) {
+    /** Both names for accessibility, e.g. "B（zuozijians-Mac-Studio）". */
+    val spokenName: String get() = machine?.let { "$name（$it）" } ?: name
+}
 internal data class Conversation(val id: String, val title: String, val leaderId: String? = null,
     val canSend: Boolean = true, val canStop: Boolean = canSend)
 internal data class ChatMessage(val id: String, val author: String, val content: String,
@@ -390,8 +396,10 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     private fun applyDirectory(value: JSONObject) {
         val previous = activePeer?.id
         peers = value.optJSONArray("nodes").objects().map {
-            Peer(it.text("id"), it.text("name"), it.optJSONObject("mesh")?.text("addr") ?: "", it.deviceStatus())
+            Peer(it.text("id"), it.text("name"), it.optJSONObject("mesh")?.text("addr") ?: "", it.deviceStatus(),
+                it.text("machine_name").ifBlank { null }, it.text("color_key").ifBlank { null })
         }
+        DeviceColors.publish(peers)
         activePeer = peers.find { it.id == (previous ?: value.text("selected_peer")) }
         settings = settings?.let { current -> current.copy(device = peers.find { it.id == current.device?.id }) }
         newChat = newChat?.let { current -> peers.find { it.id == current.peer.id }?.let { current.copy(peer = it) } }

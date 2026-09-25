@@ -6,7 +6,7 @@ use crate::{
     resources::Text,
 };
 use gpui::{div, point, prelude::*, px, rgb, Hsla, PathBuilder};
-pub use zork_client_types::device::DeviceStatus;
+pub use zork_client_types::device::{DeviceName, DeviceStatus};
 
 pub fn status_text(status: &DeviceStatus, locale: Option<&Text>) -> String {
     let (key, fallback) = match status {
@@ -29,27 +29,54 @@ pub fn status_text(status: &DeviceStatus, locale: Option<&Text>) -> String {
         .unwrap_or_else(|| fallback.into())
 }
 
-/// Compact symbol for text-only hosts that cannot render the full indicator.
-pub fn status_symbol(status: &DeviceStatus) -> &'static str {
-    match status {
-        DeviceStatus::Direct | DeviceStatus::Connected => "●",
-        DeviceStatus::Relay => "◉",
-        DeviceStatus::MeshPreparing | DeviceStatus::MeshStopping | DeviceStatus::Connecting => "◌",
-        DeviceStatus::MeshFailed(_) | DeviceStatus::Revoked => "×",
-        DeviceStatus::MeshNotStarted
-        | DeviceStatus::MeshStopped
-        | DeviceStatus::NotConnected
-        | DeviceStatus::Offline => "○",
-    }
-}
-
-pub fn summary(name: &str, status: &DeviceStatus, _locale: Option<&Text>) -> String {
-    format!("{name} {}", status_symbol(status))
-}
-
-/// Full wording remains available for accessibility and on-demand details.
-pub fn accessible_summary(name: &str, status: &DeviceStatus, locale: Option<&Text>) -> String {
+/// Text-only surfaces (menus, notices, row meta) name the device with the same
+/// short status wording as the device-name component, never a bare glyph
+/// that would take on the surrounding text colour.
+pub fn summary(name: &str, status: &DeviceStatus, locale: Option<&Text>) -> String {
     format!("{name} · {}", status_text(status, locale))
+}
+
+/// Full wording remains available for accessibility and on-demand details,
+/// including the machine name when it differs from the display name.
+pub fn accessible_summary(
+    name: impl Into<DeviceName>,
+    status: &DeviceStatus,
+    locale: Option<&Text>,
+) -> String {
+    format!("{} · {}", name.into().accessible(), status_text(status, locale))
+}
+
+/// Display names longer than this may be cut off in narrow rows, so their
+/// hint repeats them in full.
+const HINT_REPEATS_DISPLAY: usize = 10;
+
+/// The hover hint of a device name: the machine name it registered with,
+/// and the display name itself when it may be truncated.
+pub fn name_hint(name: &DeviceName) -> Option<String> {
+    let machine = name.machine.as_ref()?;
+    Some(if name.display.chars().count() > HINT_REPEATS_DISPLAY {
+        format!("{}\n机器名称：{machine}", name.display)
+    } else {
+        format!("机器名称：{machine}")
+    })
+}
+
+/// The display name as text, hinting its machine name on hover.
+pub fn name_text(id: &gpui::ElementId, name: &DeviceName) -> gpui::AnyElement {
+    let text = div()
+        .id(format!("device-name-{id}"))
+        .min_w_0()
+        .text_ellipsis()
+        .child(name.display.clone());
+    match name_hint(name) {
+        Some(hint) => tooltip::hint(
+            text.automation(AutomationRole::Status, name.accessible()),
+            format!("device-name-{id}"),
+            hint,
+        )
+        .into_any_element(),
+        None => text.into_any_element(),
+    }
 }
 
 /// Short monogram for a device: its first letter plus its first digit, if any.
@@ -63,11 +90,37 @@ pub fn monogram(name: &str) -> String {
         .collect()
 }
 
+thread_local! {
+    /// Colour keys of the host's devices by the names surfaces print, for
+    /// places that only carry a device name (message rows, activity, archives).
+    static COLOR_KEYS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        Default::default();
+}
+
+/// The host publishes each device's names with its core colour key, so every
+/// mark of the same device has the same hue.
+pub fn set_color_keys(keys: impl IntoIterator<Item = (String, String)>) {
+    COLOR_KEYS.with(|map| *map.borrow_mut() = keys.into_iter().collect());
+}
+
+/// The colour key for a device known only by name; the name itself when the
+/// host has not published one (stories, devices outside the directory).
+pub fn color_key(name: &str) -> String {
+    COLOR_KEYS
+        .with(|map| map.borrow().get(name).cloned())
+        .unwrap_or_else(|| name.to_owned())
+}
+
 /// The device's identity mark: a stable hue with the brand's folded corner.
 /// It is one path with its top-right corner cut, so it sits on any surface,
 /// including rows whose hover and selection change the fill behind it.
 pub fn mark(name: &str, size: f32) -> impl IntoElement {
-    let hue = crate::design::device_hue(name);
+    mark_keyed(name, &color_key(name), size)
+}
+
+/// A mark whose colour follows an explicit stable key.
+pub fn mark_keyed(name: &str, key: &str, size: f32) -> impl IntoElement {
+    let hue = crate::design::device_hue(key);
     div()
         .relative()
         .flex_shrink_0()
@@ -178,12 +231,12 @@ fn indicator(id: &gpui::ElementId, status: &DeviceStatus) -> gpui::AnyElement {
 
 pub fn label(
     id: impl Into<gpui::ElementId>,
-    name: impl Into<String>,
+    name: impl Into<DeviceName>,
     status: &DeviceStatus,
     locale: Option<&Text>,
 ) -> impl IntoElement {
     let id = id.into();
-    let name = name.into();
+    let name: DeviceName = name.into();
     let text = status_text(status, locale);
     let p = ZORK_UI.palette;
     let normal = matches!(status, DeviceStatus::Direct | DeviceStatus::Connected);
@@ -216,14 +269,22 @@ pub fn label(
         })
         .automation(AutomationRole::Status, detail.clone());
     let badge = tooltip::hint(badge, format!("device-status-{id:?}"), detail.clone());
+    let text = name_text(&id, &name);
     div()
         .id(id)
         .min_w_0()
         .flex()
         .items_center()
         .gap_2()
-        .child(mark(&name, 18.))
-        .child(div().min_w_0().text_ellipsis().child(name.clone()))
+        .child(mark_keyed(
+            &name.display,
+            &name.color.clone().unwrap_or_else(|| color_key(&name.display)),
+            18.,
+        ))
+        .child(text)
         .child(badge)
-        .automation(AutomationRole::Status, format!("{name} · {detail}"))
+        .automation(
+            AutomationRole::Status,
+            format!("{} · {detail}", name.accessible()),
+        )
 }

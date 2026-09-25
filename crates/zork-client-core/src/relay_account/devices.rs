@@ -178,6 +178,8 @@ pub(crate) fn start_client(
             let candidates = devices
                 .iter()
                 .map(|device| crate::store::SavedNode {
+                    machine_name: None,
+                    color_key: None,
                     id: device.origin.clone(),
                     name: device.name.clone(),
                     url: String::new(),

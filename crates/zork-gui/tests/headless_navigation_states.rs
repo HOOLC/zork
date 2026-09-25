@@ -258,6 +258,8 @@ fn chat_hover_checks() -> anyhow::Result<()> {
     };
     let device = zork_ui::chat_navigation::Device {
         id: "device-0".into(),
+        machine: None,
+        color: None,
         name: "测试设备".into(),
         online: Some(true),
         status: zork_ui::device_name::DeviceStatus::Direct,

@@ -107,7 +107,7 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
     }
     val error = submit.error ?: if (kind == "connection") state.authorizationError else if (kind == "upgrade") state.operation?.text("error")?.takeIf { it.isNotBlank() } else null
     val title = when (kind) {
-        "rename" -> "修改设备名称"
+        "rename" -> "修改显示名称"
         "connection" -> "添加模型连接"; "profile-name" -> "重命名连接"; else -> "升级设备"
     }
     SettingsSheet(title, busy, error, ::close, open = open, onClosed = onClosed,
@@ -148,9 +148,14 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
     }) {
         if (!state.online) Text("设备离线，显示已保存的设置。恢复连接后可修改。", color = ZorkColors.Muted, fontSize = 13.sp)
         when (kind) {
-            "profile-name", "rename" -> {
+            "profile-name" -> {
                 SettingsField("名称", name, { name = it }, enabled = editable)
-                Text(if (kind == "rename") "连接此设备的客户端都会看到新名称。" else "名称可使用中文，原有连接 ID 和 Session 配置保持有效。", fontSize = 12.sp, color = ZorkColors.Muted)
+                Text("名称可使用中文，原有连接 ID 和 Session 配置保持有效。", fontSize = 12.sp, color = ZorkColors.Muted)
+            }
+            "rename" -> {
+                SettingsField("显示名称", name, { name = it }, enabled = editable)
+                Text("Mesh 中的所有设备和手机都会看到新名称" +
+                    (state.device?.machine?.let { "，机器名称 $it 保持不变。" } ?: "。"), fontSize = 12.sp, color = ZorkColors.Muted)
             }
             "connection" -> {
                 ConnectionSteps(step)

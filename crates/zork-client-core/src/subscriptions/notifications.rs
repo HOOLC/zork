@@ -29,6 +29,8 @@ mod tests {
         let store = client.store.clone();
         store
             .save_node(&crate::store::SavedNode {
+                machine_name: None,
+                color_key: None,
                 id: "node".into(),
                 name: "workstation".into(),
                 url: String::new(),

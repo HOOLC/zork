@@ -302,6 +302,12 @@ impl Directory {
                             directory.resources.revoke(&id);
                         }
                         if let Some(group) = &state.mesh.group {
+                            if let Err(error) = directory
+                                .store
+                                .apply_mesh_names(group, state.mesh.names.as_ref())
+                            {
+                                tracing::debug!(%error, "Mesh display names not recorded");
+                            }
                             let identity = directory.store.get::<String>("device", "identity");
                             if let Ok(Some(identity)) = identity {
                                 let account_owned: Vec<String> = directory
@@ -450,6 +456,6 @@ impl Directory {
 }
 
 fn directory_node(node: &SavedNode) -> Value {
-    json!({"id":node.id,"name":node.name,"mesh":node.mesh,"group":node.group,
+    json!({"id":node.id,"name":node.name,"machine_name":node.machine_name,"color_key":node.color_key,"mesh":node.mesh,"group":node.group,
         "status":crate::device_status::DeviceStatus::MeshNotStarted})
 }

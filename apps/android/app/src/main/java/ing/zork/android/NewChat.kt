@@ -48,8 +48,7 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                 if (!switching) DeviceName(state.peer.name, state.peer.status)
             }
         }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val presence = rememberComposerPresence(WorkbenchState(), (maxWidth - 24.dp).value)
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.Center) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -60,7 +59,7 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                 }
                 if (switching) NewChatDeviceTabs(peers, state.peer, !data.optBoolean("busy"), selectDevice)
                 // The composer's outline covers the tabs' lower edge.
-                DraftComposer(text, emptyList(), editable, false, data.optBoolean("can_submit"), presence,
+                DraftComposer(text, emptyList(), editable, false, data.optBoolean("can_submit"),
                     if (switching) Modifier.offset(y = (-12).dp) else Modifier, 180.dp,
                     WorkbenchActions(draft = { value -> text = value; action("edit", value) }, send = { action("submit", text) }), showAttach = false)
                 val model = data.pickerChoice("model")
@@ -96,10 +95,10 @@ private fun NewChatDeviceTabs(peers: List<Peer>, current: Peer, enabled: Boolean
             Row(Modifier.height(48.dp)
                 .background(if (selected) ZorkColors.Selected else ZorkColors.Prompt, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                 .selectable(selected, enabled = enabled, role = Role.Tab) { if (!selected) select(peer) }
-                .semantics { contentDescription = deviceNameSummary(peer.name, peer.status) }
+                .semantics { contentDescription = deviceNameSummary(peer.spokenName, peer.status) }
                 .padding(start = 10.dp, end = 14.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DeviceMark(peer.name, 18.dp)
+                DeviceMark(peer.name, 18.dp, colorKey = peer.colorKey)
                 Text(peer.name, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                     color = if (selected) ZorkColors.Ink else ZorkColors.Muted, maxLines = 1)
                 DeviceStatusBadge(peer.status)

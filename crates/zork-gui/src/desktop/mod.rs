@@ -58,7 +58,8 @@ pub struct DesktopRoot {
     rename_node_id: Option<String>,
     rename_busy: bool,
     rename_error: Option<String>,
-    rename_modal: ui::ModalState,
+    /// Focus the inline display-name field on the next frame.
+    rename_focus: bool,
     remote_name: Entity<ComposerInput>,
     remote_origin: Entity<ComposerInput>,
     remote_addr: Entity<ComposerInput>,
@@ -134,6 +135,7 @@ impl DesktopRoot {
             ..Default::default()
         };
         let nodes = snapshot.nodes.as_ref().clone();
+        publish_color_keys(&nodes);
         let local_enabled = snapshot.local_enabled;
         let startup_error = snapshot.error.clone();
         let local = source.local.clone();
@@ -143,10 +145,21 @@ impl DesktopRoot {
             cx.observe(&input, |_, _, cx| cx.notify()).detach();
             input
         };
-        let rename_input = field("设备名称");
         let remote_name = field("设备名称");
         let remote_origin = field("目标设备 key: 身份");
         let remote_addr = field("局域网地址（可选），例如 192.168.1.20:43120");
+        let rename_input = cx.new(|cx| ComposerInput::new("显示名称", cx).single_line());
+        cx.observe(&rename_input, |_, _, cx| cx.notify()).detach();
+        // Enter in the inline display-name field saves it.
+        cx.subscribe(
+            &rename_input,
+            |v: &mut Self, _, _: &zork_ui::components::text_input::ComposerSubmit, cx| {
+                if v.rename_node_id.is_some() {
+                    v.save_device_name(cx);
+                }
+            },
+        )
+        .detach();
         let mut add_device_modal = ui::ModalState::new(cx);
         add_device_modal.retain("add-device-dialog", None::<()>, cx);
         let navigation = cx.new(|cx| navigation::DeviceNavigation::new(store.clone(), &nodes, cx));
@@ -192,7 +205,7 @@ impl DesktopRoot {
             rename_node_id: None,
             rename_busy: false,
             rename_error: None,
-            rename_modal: ui::ModalState::new(cx),
+            rename_focus: false,
             remote_name,
             remote_origin,
             remote_addr,
@@ -297,6 +310,7 @@ impl DesktopRoot {
         }
         let nodes_changed = self.nodes != *snapshot.nodes;
         self.nodes = snapshot.nodes.as_ref().clone();
+        publish_color_keys(&self.nodes);
         self.local_enabled = snapshot.local_enabled;
         self.mesh_identity = snapshot.mesh_identity.clone();
         self.device_info = snapshot.info.as_ref().clone();
@@ -498,7 +512,7 @@ impl DesktopRoot {
                 let mut view =
                     RootView::new_desktop(client.clone(), self.store.clone(), node.id.clone(), cx);
                 zork_client_core::desktop::trace_startup("gui.workspace_view_created");
-                view.attach_navigation(self.navigation.clone(), node.name.clone());
+                view.attach_navigation(self.navigation.clone(), node.device_name());
                 view.set_applications(self.applications.clone(), cx);
                 view.set_new_chat_devices(self.source.new_chat_devices(&node.id), cx);
                 view
@@ -762,13 +776,29 @@ impl DesktopRoot {
         cx.notify();
     }
 }
+/// Every mark of a device, including ones that only know its name, takes the
+/// hue of its core colour key (join order or identity).
+fn publish_color_keys(nodes: &[crate::desktop::store::SavedNode]) {
+    zork_ui::device_name::set_color_keys(nodes.iter().flat_map(|node| {
+        let key = node.color_key.clone().unwrap_or_else(|| node.id.clone());
+        std::iter::once((node.name.clone(), key.clone()))
+            .chain(node.machine_name.clone().map(|machine| (machine, key)))
+    }));
+}
+
 impl DesktopRoot {
     fn apply_device_name(&mut self, id: &str, name: &str, cx: &mut Context<Self>) {
         self.navigation
             .update(cx, |nav, cx| nav.update_nodes(&self.nodes, cx));
+        let device_name = self
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .map(|n| n.device_name())
+            .unwrap_or_else(|| name.into());
         if let Some((_, view)) = self.node_views.get(id) {
             view.update(cx, |v, cx| {
-                v.attach_navigation(self.navigation.clone(), name.into());
+                v.attach_navigation(self.navigation.clone(), device_name);
                 cx.notify();
             });
         }
@@ -788,7 +818,15 @@ impl DesktopRoot {
             .update(cx, |v, cx| v.set_value(node.name.clone(), cx));
         self.rename_node_id = Some(node.id.clone());
         self.rename_error = None;
+        self.rename_focus = true;
         cx.notify();
+    }
+    fn cancel_device_rename(&mut self, cx: &mut Context<Self>) {
+        if !self.rename_busy {
+            self.rename_node_id = None;
+            self.rename_error = None;
+            cx.notify();
+        }
     }
     fn save_device_name(&mut self, cx: &mut Context<Self>) {
         if self.rename_busy {
@@ -803,6 +841,12 @@ impl DesktopRoot {
             return;
         };
         let name = self.rename_input.read(cx).value().to_owned();
+        // Empty, too long and duplicate names are reported without a request.
+        if let Err(error) = self.source.validate_display_name(&node, &name) {
+            self.rename_error = Some(error.to_string());
+            cx.notify();
+            return;
+        }
         self.rename_busy = true;
         self.rename_error = None;
         let source = self.source.clone();
@@ -882,7 +926,14 @@ impl DesktopRoot {
         };
         let info = self.device_info.get(&node.id);
         let data = DeviceData {
-            name: node.name.clone(),
+            name: node.device_name(),
+            rename: (self.rename_node_id.as_ref() == Some(&node.id)).then(|| {
+                zork_ui::settings::RenameField {
+                    input: self.rename_input.clone(),
+                    busy: self.rename_busy,
+                    error: self.rename_error.clone(),
+                }
+            }),
             status: self.source.device_status(&node.id),
             version: info
                 .and_then(|i| {
@@ -941,6 +992,7 @@ impl DesktopRoot {
                 cx,
                 |v, action, cx| match action {
                     DeviceAction::Rename => v.open_device_rename(cx),
+                    DeviceAction::CancelRename => v.cancel_device_rename(cx),
                     DeviceAction::Refresh => v.refresh_device_info(cx),
                     DeviceAction::CheckUpdate => v.update_device_release(false, cx),
                     DeviceAction::Upgrade => v.update_device_release(true, cx),
@@ -1057,20 +1109,14 @@ impl Render for DesktopRoot {
                 cx,
             )
         });
-        self.rename_modal.sync(
-            self.rename_node_id.as_ref().map(|_| "device-rename-dialog"),
-            window,
-            cx,
-        );
+        if std::mem::take(&mut self.rename_focus) {
+            window.focus(&self.rename_input.read(cx).focus_handle(), cx);
+        }
         self.add_device_modal.sync(
             self.add_device_open.then_some("add-device-dialog"),
             window,
             cx,
         );
-        let rename_visible = self
-            .rename_modal
-            .retain("device-rename-dialog", self.rename_node_id.clone(), cx)
-            .is_some();
         let add_device_visible = self
             .add_device_modal
             .retain("add-device-dialog", self.add_device_open.then_some(()), cx)
@@ -1275,7 +1321,7 @@ impl Render for DesktopRoot {
                                                                         "settings-name-{}",
                                                                         node.id
                                                                     ),
-                                                                    node.name.clone(),
+                                                                    node.device_name(),
                                                                     &self
                                                                         .source
                                                                         .device_status(&node.id),
@@ -1295,7 +1341,10 @@ impl Render for DesktopRoot {
                                                         ))
                                                         .automation(
                                                             AutomationRole::Button,
-                                                            format!("{} 设备设置", node.name),
+                                                            format!(
+                                                                "{} 设备设置",
+                                                                node.device_name().accessible()
+                                                            ),
                                                         ),
                                                 )
                                             }))
@@ -1376,23 +1425,6 @@ impl Render for DesktopRoot {
             .when_some(self.resource_inspector.clone(), |shell, view| {
                 shell.child(view)
             })
-            .when(rename_visible, |shell| {
-                shell.child(zork_ui::settings::rename_device::render(
-                    &self.rename_input,
-                    self.rename_busy,
-                    self.rename_error.clone(),
-                    &self.rename_modal,
-                    window,
-                    cx,
-                    |v, action, cx| match action {
-                        zork_ui::settings::rename_device::Action::Save => v.save_device_name(cx),
-                        zork_ui::settings::rename_device::Action::Cancel => {
-                            v.rename_node_id = None;
-                            cx.notify();
-                        }
-                    },
-                ))
-            })
             .when(add_device_visible, |shell| {
                 shell.children(self.mesh_settings.clone().map(|view| {
                     let data = view.read(cx).enrollment_data();
@@ -1439,6 +1471,7 @@ impl zork_ui::node_directory::Host for DesktopRoot {
                 .map(|n| zork_ui::node_directory::Node {
                     id: n.id.clone(),
                     name: n.name.clone(),
+                    machine: n.machine_name.clone(),
                     status: self.source.device_status(&n.id),
                     remote: n.mesh.is_some(),
                 })

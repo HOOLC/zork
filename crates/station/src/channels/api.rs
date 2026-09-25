@@ -79,10 +79,8 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     if input.tool == "agent.list" && input.arguments.get("target").is_none() {
         return agents::discover(state, &who, &input.arguments).await;
     }
-    let mut target = input.arguments["target"]
-        .as_str()
-        .unwrap_or("local")
-        .to_owned();
+    let mut target =
+        node_access::resolve_target(state, input.arguments["target"].as_str().unwrap_or("local"))?;
     let mut args = input.arguments.clone();
     args.as_object_mut().unwrap().remove("target");
     if zork_agent_station_tools::channels::sends_message(&input.tool) && args["chat_id"].is_null() {

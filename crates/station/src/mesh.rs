@@ -674,19 +674,42 @@ async fn membership_request(
         .group
         .context("mesh_membership_missing")?;
     if action == "apply_membership" {
-        return crate::enrollment::apply_group(
+        let applied = crate::enrollment::apply_group(
             state,
             origin,
             serde_json::from_value(body["group"].clone())?,
         )
-        .await;
+        .await?;
+        // Newer authorities send the display names beside the group.
+        if !body["names"].is_null() {
+            crate::enrollment::apply_names(
+                state,
+                origin,
+                serde_json::from_value(body["names"].clone())?,
+            )?;
+        }
+        return Ok(applied);
     }
     ensure!(
         group.authority == service.origin() && group.contains(origin),
         "mesh_member_required"
     );
     match action {
-        "membership" => Ok(json!({"group":group})),
+        "membership" => Ok(
+            json!({"group":group,"names":zork_config::membership::load_names(&state.config.data_root)?}),
+        ),
+        "rename_display" => {
+            service
+                .enrollment
+                .rename_display(
+                    state,
+                    body["origin"]
+                        .as_str()
+                        .context("device_identity_required")?,
+                    body["name"].as_str().context("device_name_required")?,
+                )
+                .await
+        }
         "rename_device" => {
             service
                 .enrollment
@@ -774,6 +797,17 @@ async fn maintain_membership(service: Arc<MeshService>, state: AppState) {
             )));
             watchers.insert(peer.origin.clone(), (peer, task));
         }
+        if config
+            .group
+            .as_ref()
+            .is_some_and(|g| g.authority == service.origin())
+        {
+            // The authority names new devices and backfills an existing Mesh
+            // after an upgrade; members follow through the membership feed.
+            if let Err(error) = service.enrollment.reconcile_names(&state).await {
+                tracing::warn!(%error, "Mesh display names will retry");
+            }
+        }
         let authority = config
             .group
             .as_ref()
@@ -807,6 +841,13 @@ async fn watch_membership(service: Arc<MeshService>, state: AppState, authority:
                         let group = serde_json::from_value(value["group"].clone())?;
                         let applied =
                             crate::enrollment::apply_group(&state, &authority, group).await?;
+                        if !value["names"].is_null() {
+                            crate::enrollment::apply_names(
+                                &state,
+                                &authority,
+                                serde_json::from_value(value["names"].clone())?,
+                            )?;
+                        }
                         if applied["applied"] != true {
                             // Authority-owned invitations can change without a
                             // membership revision. Forward their invalidation.
@@ -1505,6 +1546,7 @@ fn client_route(method: &str, path: &str) -> bool {
             "PUT",
             ["v1", "node", "profiles", _]
             | ["v1", "node", "name"]
+            | ["v1", "node", "mesh", "names"]
             | ["v1", "node", "profiles", _, "models"]
             | ["v1", "node", "profiles", _, "models", "enabled"]
             | ["v1", "node", "profiles", _, "name"]
@@ -2104,7 +2146,7 @@ pub async fn status(State(state): State<AppState>) -> Response {
         .values()
         .cloned()
         .collect::<Vec<_>>();
-    Json(json!({"enabled":true,"change_token":state.db.realtime.token(state.db.realtime.current().mesh),"origin":service.origin,"group":service.config().ok().and_then(|c|c.group),"peers":peers,"workspaces":service.config().unwrap_or_default().workspaces.iter().map(|w|&w.id).collect::<Vec<_>>(),"assignments":links})).into_response()
+    Json(json!({"enabled":true,"change_token":state.db.realtime.token(state.db.realtime.current().mesh),"origin":service.origin,"group":service.config().ok().and_then(|c|c.group),"names":zork_config::membership::load_names(&state.config.data_root).ok().flatten(),"peers":peers,"workspaces":service.config().unwrap_or_default().workspaces.iter().map(|w|&w.id).collect::<Vec<_>>(),"assignments":links})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -2365,8 +2407,9 @@ impl zork_notify::stream::Source for MeshWatch {
             ),
             WatchTopic::Membership => {
                 let group = config.mesh.group.context("mesh_membership_missing")?;
+                let names = zork_config::membership::load_names(&self.state.config.data_root)?;
                 Page::snapshot(
-                    json!({"group":group,"change_token":self.state.db.realtime.token(self.state.db.realtime.current().mesh)}),
+                    json!({"group":group,"names":names,"change_token":self.state.db.realtime.token(self.state.db.realtime.current().mesh)}),
                 )
             }
             WatchTopic::Assignment { assignment_id, .. } => {
@@ -2434,6 +2477,7 @@ mod native_routes_tests {
             ("GET", "/v1/node/info"),
             ("GET", "/v1/node/resources"),
             ("PUT", "/v1/node/name"),
+            ("PUT", "/v1/node/mesh/names"),
             ("GET", "/v1/node/update"),
             ("POST", "/v1/node/update"),
             ("GET", "/v1/node/conversations/read-markers"),

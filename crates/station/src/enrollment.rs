@@ -13,7 +13,7 @@ use std::{
 };
 use zork_client_core::transport::Enrollment;
 use zork_config::{
-    membership::{MeshDevice, MeshGroup},
+    membership::{MeshDevice, MeshGroup, MeshNames},
     MeshConfig,
 };
 use zork_mesh::{
@@ -107,7 +107,9 @@ impl EnrollmentService {
                 return None;
             }
         };
-        self.transport.hold_relay_for_invites(!open.is_empty()).await;
+        self.transport
+            .hold_relay_for_invites(!open.is_empty())
+            .await;
         open.iter().map(|r| r.expires_at).min()
     }
 
@@ -170,8 +172,7 @@ impl EnrollmentService {
         let config = zork_config::load_config(&self.root)?.mesh;
         // Joiners outside the LAN reach this endpoint through the relay.
         self.transport.hold_relay_for_invites(true).await;
-        let short = match enrollment::ticket::Ticket::new(self.transport.address().await, &config)
-        {
+        let short = match enrollment::ticket::Ticket::new(self.transport.address().await, &config) {
             Ok(short) => short,
             Err(error) => {
                 self.sync_invite_relay().await;
@@ -724,6 +725,82 @@ impl EnrollmentService {
         Ok(json!({"name":name,"group":group}))
     }
 
+    /// Authority only: names devices that joined and backfills an existing
+    /// Mesh in join order. Members receive the result with the membership.
+    pub async fn reconcile_names(&self, state: &AppState) -> Result<()> {
+        let service = state.mesh.get().context("mesh_not_ready")?;
+        let _guard = self.transaction.lock().await;
+        let Some(group) = zork_config::load_config(&self.root)?.mesh.group else {
+            return Ok(());
+        };
+        if group.authority != service.origin() {
+            return Ok(());
+        }
+        let _names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+        let mut names = zork_config::membership::load_names(&self.root)?
+            .filter(|n| n.authority == group.authority)
+            .unwrap_or_else(|| MeshNames::new(&group.authority));
+        if names.reconcile(&group) {
+            zork_config::membership::save_names(&self.root, &names)?;
+            state.db.realtime.notify(crate::realtime::MESH);
+        }
+        Ok(())
+    }
+
+    /// Changes one device's Mesh-wide display name. Any member may rename any
+    /// device; the authority applies renames in turn, so concurrent requests
+    /// resolve deterministically, and rejects names already in use.
+    pub async fn rename_display(
+        &self,
+        state: &AppState,
+        origin: &str,
+        name: &str,
+    ) -> Result<Value> {
+        let name =
+            zork_client_types::device::validate_display_name(name).map_err(anyhow::Error::msg)?;
+        let service = state.mesh.get().context("mesh_not_ready")?;
+        let group = zork_config::load_config(&self.root)?
+            .mesh
+            .group
+            .context("mesh_membership_missing")?;
+        if group.authority != service.origin() {
+            let result = service
+                .membership_call(
+                    &group.authority,
+                    "rename_display",
+                    json!({"origin":origin,"name":name}),
+                )
+                .await
+                .map_err(|error| {
+                    if error.to_string() == "unknown_membership_action" {
+                        anyhow::anyhow!("Mesh 管理设备的版本较旧，升级后才能修改显示名称")
+                    } else {
+                        error
+                    }
+                })?;
+            let names: MeshNames = serde_json::from_value(result["names"].clone())?;
+            apply_names(state, &group.authority, names)?;
+            return Ok(result);
+        }
+        let _guard = self.transaction.lock().await;
+        let group = zork_config::load_config(&self.root)?
+            .mesh
+            .group
+            .context("mesh_membership_missing")?;
+        let _names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+        let stored = zork_config::membership::load_names(&self.root)?
+            .filter(|n| n.authority == group.authority);
+        let mut names = stored
+            .clone()
+            .unwrap_or_else(|| MeshNames::new(&group.authority));
+        names.rename(&group, origin, &name)?;
+        if stored.as_ref() != Some(&names) {
+            zork_config::membership::save_names(&self.root, &names)?;
+            state.db.realtime.notify(crate::realtime::MESH);
+        }
+        Ok(json!({"name":name,"names":names}))
+    }
+
     async fn broadcast(&self, state: &AppState, group: &MeshGroup) {
         let Some(service) = state.mesh.get() else {
             return;
@@ -834,6 +911,30 @@ pub fn own_device(root: &Path, origin: &str, node: &MeshNode) -> Result<MeshDevi
         },
         addr,
     })
+}
+
+/// Serializes writers of the display-name file within this Station.
+static NAMES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Member side: keeps the authority's display names if they are newer.
+pub fn apply_names(state: &AppState, sender: &str, names: MeshNames) -> Result<bool> {
+    names.validate()?;
+    let root = &state.config.data_root;
+    ensure!(
+        names.authority == sender
+            && zork_config::load_config(root)?
+                .mesh
+                .group
+                .is_some_and(|g| g.authority == sender),
+        "mesh_authority_required"
+    );
+    let _names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if !names.supersedes(zork_config::membership::load_names(root)?.as_ref()) {
+        return Ok(false);
+    }
+    zork_config::membership::save_names(root, &names)?;
+    state.db.realtime.notify(crate::realtime::MESH);
+    Ok(true)
 }
 
 pub async fn apply_group(state: &AppState, sender: &str, group: MeshGroup) -> Result<Value> {

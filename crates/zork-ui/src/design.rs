@@ -173,43 +173,46 @@ pub const RADIUS: Radii = Radii {
 /// Stable identity hues for devices. They mark which device a Chat or message
 /// belongs to and never express status; status keeps its own shape and text.
 /// Both themes share lightness and chroma within the set; dark lifts it a step.
-pub static DEVICE_HUES: Themed<[u32; 5]> = Themed::new(
-    [0x5E8B6B, 0x56759A, 0xA27A2B, 0x87618F, 0x3E8787],
-    [0x6E9D7B, 0x6C8BB0, 0xB8903E, 0x9D78A6, 0x52A0A0],
+/// Ordered so neighbouring slots sit far apart on the wheel: devices take
+/// slots in join order (blue, amber, green, plum, teal, raspberry).
+pub static DEVICE_HUES: Themed<[u32; 6]> = Themed::new(
+    [0x56759A, 0xA27A2B, 0x5E8B6B, 0x87618F, 0x3E8787, 0xA5607A],
+    [0x6C8BB0, 0xB8903E, 0x6E9D7B, 0x9D78A6, 0x52A0A0, 0xBC7890],
 );
 /// Selected text in inputs and messages (RGBA).
 pub static TEXT_SELECTION: Themed<u32> = Themed::new(0xC9DCF5CC, 0x35507ACC);
 /// Inline code ink inside prose.
 pub static CODE_INK: Themed<u32> = Themed::new(0x7C3FA0, 0xC9A2E8);
+/// Hue for a device's stable colour key (join order or identity, from core);
+/// never its display name, so renaming keeps the colour.
 pub fn device_hue(key: &str) -> u32 {
-    let hash = key
-        .bytes()
-        .fold(0x811C9DC5u32, |hash, byte| (hash ^ byte as u32).wrapping_mul(0x0100_0193));
     let hues = *DEVICE_HUES;
-    hues[hash as usize % hues.len()]
+    hues[zork_client_types::device::color_slot(key, hues.len())]
 }
 /// Agent identity tints: a pale disc with deep ink in light, a deep disc with
 /// light ink in dark. They mark which agent wrote a message and never express
 /// status. Three registers keep them apart from the other colour systems:
 /// agents are round tonal discs, devices are solid squircles with the folded
 /// corner, status is a small solid dot, ring or cross with text. The hues sit
-/// in the gaps of the device set (40° 137° 180° 214° 290°) and the status and
-/// persimmon hues (14° 36° 150° 357°): indigo 248°, olive 72°, orchid 318°,
-/// moss 112°, plus a neutral graphite. Each pair is (fill, ink).
+/// in the gaps of the device set (40° 137° 180° 213° 290° 337°) and the status
+/// and persimmon hues (14° 36° 150° 357°): indigo 231°, olive 51°, violet 266°,
+/// moss 108°, plus a neutral graphite. Violet replaced an orchid (318°) once
+/// devices gained raspberry (337°): orchid sat between plum and raspberry.
+/// Each pair is (fill, ink).
 pub static AGENT_TINTS: Themed<[(u32, u32); 5]> = Themed::new(
     // Ordered so neighbouring slots differ most: collision fallback moves to
     // the next slot and should still look clearly different.
     [
         (0xDFE3FA, 0x33429A),
         (0xEDE6C4, 0x5A4E0B),
-        (0xF6DDEE, 0x8A2F72),
+        (0xECE2F8, 0x603B91),
         (0xDCEBD5, 0x35602A),
         (0xE6E3DD, 0x3A3D42),
     ],
     [
         (0x363D68, 0xCBD2FA),
         (0x4A4526, 0xE6DDA6),
-        (0x573453, 0xF3C4E6),
+        (0x4A3960, 0xDECBF6),
         (0x34472F, 0xC0DDB0),
         (0x3D4044, 0xDDD9D2),
     ],
@@ -832,5 +835,19 @@ mod agent_tint_tests {
         assert_eq!(slots.len(), 7);
         assert_eq!(slots[5].1, agent_tint_slot("agent-5"));
         assert_eq!(slots[6].1, agent_tint_slot("agent-6"));
+    }
+}
+
+#[cfg(test)]
+mod device_hue_tests {
+    #[test]
+    fn devices_in_join_order_get_distinct_hues_and_renames_keep_them() {
+        let hues: Vec<_> = (0..6).map(|n| super::device_hue(&format!("seq:{n}"))).collect();
+        let mut unique = hues.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), 6, "{hues:x?}");
+        // The key is stable identity; the display name never enters it.
+        assert_eq!(super::device_hue("seq:1"), super::device_hue("seq:7"));
     }
 }
