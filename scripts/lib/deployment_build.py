@@ -36,6 +36,20 @@ def source_stamp(repo):
             'dirty': bool(changes or any(untracked)), 'changes_sha256': inputs.hexdigest()}
 
 
+def codesign_identity(repo):
+    explicit = os.environ.get('ZORK_CODESIGN_IDENTITY')
+    if explicit:
+        return explicit
+    spec = importlib.util.spec_from_file_location('deployment_browser_runtime', Path(repo) / 'scripts/lib/browser-runtime.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        return module.signing_identity()
+    except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
+        print(f'No trusted signing identity, signing ad-hoc: {error}', file=sys.stderr)
+        return '-'
+
+
 def load_packager(repo):
     spec = importlib.util.spec_from_file_location('deployment_packager', Path(repo) / 'scripts/package-macos-client.py')
     module = importlib.util.module_from_spec(spec)
@@ -164,8 +178,12 @@ def _build(repo, store, kind, profile, services, env, channel):
             args = type('Options', (), {'bin_dir': raw, 'browser_bin_dir': raw,
                 'id_prefix': id_prefix(channel), 'channel': channel, 'services_config': services,
                 'build_record': stage / 'build.json', 'cua_runtime': cua_runtime})()
-            # Personal builds deliberately use the same ad-hoc signing policy throughout.
-            overrides = {'ZORK_CODESIGN_IDENTITY': '-'}
+            # Sign with a trusted Apple Development / Developer ID identity when the
+            # keychain has one: macOS keys Local Network (and other privacy) grants
+            # to that identity, so they survive updates. Ad-hoc builds are keyed to
+            # each binary's UUID and lose the grant on every update. Without a
+            # usable identity, fall back to ad-hoc; ZORK_CODESIGN_IDENTITY overrides.
+            overrides = {'ZORK_CODESIGN_IDENTITY': codesign_identity(repo)}
             if env.get('CEF_PATH'):
                 overrides['CEF_PATH'] = env['CEF_PATH']
             previous = {name: os.environ.get(name) for name in overrides}

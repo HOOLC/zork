@@ -38,6 +38,15 @@ def copy_binary(source, destination):
         shutil.copy2(source, destination)
 
 
+# Every process that opens Mesh sockets declares Local Network use; without it
+# macOS denies helpers multicast (LAN discovery) even when unicast is allowed.
+LOCAL_NETWORK = {
+    'NSLocalNetworkUsageDescription': '用于发现并连接同一网络中的已配对设备，同步消息和任务。',
+    'NSBonjourServices': ['_zork-mesh-v1._udp', '_zork-enrollment-v1._udp'],
+}
+MESH_HELPER_ROLES = {'station', 'supervisor'}
+
+
 def app_info(version, prefix='ing.zork', channel='release'):
     name = app_name(channel)
     icon = CHANNELS[channel].icon
@@ -46,9 +55,7 @@ def app_info(version, prefix='ing.zork', channel='release'):
             'CFBundleExecutable': 'zork-gui', 'CFBundlePackageType': 'APPL',
             'CFBundleShortVersionString': version, 'CFBundleVersion': version,
             'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
-            'NSPrincipalClass': 'NSApplication',
-            'NSLocalNetworkUsageDescription': '用于发现并连接同一网络中的已配对设备，同步消息和任务。',
-            'NSBonjourServices': ['_zork-mesh-v1._udp', '_zork-enrollment-v1._udp']}
+            'NSPrincipalClass': 'NSApplication', **LOCAL_NETWORK}
 
 
 def verify_app(app):
@@ -105,7 +112,8 @@ def stage_binaries(app, binaries, assets, version, launcher, prefix='ing.zork'):
                           'CFBundlePackageType': 'APPL',
                           'CFBundleIconFile': bundle_name + '.icns',
                           'CFBundleShortVersionString': version, 'CFBundleVersion': version,
-                          'LSBackgroundOnly': True, 'LSMinimumSystemVersion': '26.0'}, output)
+                          'LSBackgroundOnly': True, 'LSMinimumSystemVersion': '26.0',
+                          **(LOCAL_NETWORK if role in MESH_HELPER_ROLES else {})}, output)
         # Keep the CLI entry points and sibling discovery used by the runtime.
         (mac / name).symlink_to(os.path.relpath(executable_dir / entry, mac))
         for sibling in [*COMPONENTS, *RUNTIME_ALIASES]:

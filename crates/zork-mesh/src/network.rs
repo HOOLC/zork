@@ -363,4 +363,114 @@ mod tests {
         println!("addrs {:?}", endpoint.addr());
         endpoint.close().await;
     }
+
+    /// Two real endpoints with the production Mesh endpoint configuration:
+    /// `ZORK_PATH_LAB=server` prints its address (one JSON line) and echoes;
+    /// `ZORK_PATH_LAB=client ZORK_PATH_LAB_ADDR='<json>'` connects and prints
+    /// every path once a second. Diagnoses LAN connections that stay on the relay.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "manual two-machine lab"]
+    async fn path_lab() {
+        use futures_util::StreamExt;
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        const ALPN: &[u8] = b"zork/path-lab/1";
+        let secs: u64 = std::env::var("ZORK_PATH_LAB_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(40);
+        let options = super::options(&zork_config::MeshConfig::default()).unwrap();
+        let (builder, _route) = configure_endpoint(
+            Endpoint::builder(presets::N0).ca_tls_config(iroh::tls::CaTlsConfig::system()),
+            &options,
+        )
+        .await
+        .unwrap();
+        let endpoint = builder.alpns(vec![ALPN.to_vec()]).bind().await.unwrap();
+        let start = std::time::Instant::now();
+        let print_paths = |label: &str, connection: &iroh::endpoint::Connection| {
+            for path in connection.paths().iter() {
+                println!(
+                    "[{:>6.2}s] {label} path {:?} remote={:?} local={:?} selected={} rtt={:?}",
+                    start.elapsed().as_secs_f64(),
+                    path.id(),
+                    path.remote_addr(),
+                    path.local_addr(),
+                    path.is_selected(),
+                    path.rtt()
+                );
+            }
+        };
+        match std::env::var("ZORK_PATH_LAB").as_deref() {
+            Ok("server") => {
+                endpoint.online().await;
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                println!("ADDR {}", serde_json::to_string(&endpoint.addr()).unwrap());
+                let deadline = tokio::time::sleep(Duration::from_secs(secs));
+                tokio::pin!(deadline);
+                loop {
+                    tokio::select! {
+                        _ = &mut deadline => break,
+                        Some(incoming) = endpoint.accept() => {
+                            let connection = incoming.await.unwrap();
+                            println!("[{:>6.2}s] accepted {}", start.elapsed().as_secs_f64(), connection.remote_id());
+                            let c = connection.clone();
+                            tokio::spawn(async move {
+                                let mut tick = tokio::time::interval(Duration::from_secs(2));
+                                loop {
+                                    tick.tick().await;
+                                    if c.close_reason().is_some() { break; }
+                                    for path in c.paths().iter() {
+                                        println!("server path {:?} remote={:?} local={:?} selected={} rtt={:?}",
+                                            path.id(), path.remote_addr(), path.local_addr(), path.is_selected(), path.rtt());
+                                    }
+                                }
+                            });
+                            tokio::spawn(async move {
+                                while let Ok((mut send, mut recv)) = connection.accept_bi().await {
+                                    let data = recv.read_to_end(1 << 16).await.unwrap_or_default();
+                                    let _ = send.write_all(&data).await;
+                                    let _ = send.finish();
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+            Ok("client") => {
+                let addr: iroh::EndpointAddr =
+                    serde_json::from_str(&std::env::var("ZORK_PATH_LAB_ADDR").unwrap()).unwrap();
+                println!("connecting to {addr:?}");
+                let connection = endpoint.connect(addr, ALPN).await.unwrap();
+                println!("[{:>6.2}s] connected", start.elapsed().as_secs_f64());
+                let mut events = connection.path_events();
+                let mut tick = tokio::time::interval(Duration::from_secs(1));
+                // ZORK_PATH_LAB_PING_SECS: send a request only this often (idle in between).
+                let ping_every: u64 = std::env::var("ZORK_PATH_LAB_PING_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+                let mut ticks: u64 = 0;
+                let deadline = tokio::time::sleep(Duration::from_secs(secs));
+                tokio::pin!(deadline);
+                loop {
+                    tokio::select! {
+                        _ = &mut deadline => break,
+                        Some(event) = events.next() => println!("[{:>6.2}s] EVENT {event:?}", start.elapsed().as_secs_f64()),
+                        _ = tick.tick() => {
+                            print_paths("client", &connection);
+                            ticks += 1;
+                            if (ticks - 1) % ping_every != 0 { continue; }
+                            println!("[{:>6.2}s] ping", start.elapsed().as_secs_f64());
+                            if let Ok((mut send, mut recv)) = connection.open_bi().await {
+                                let _ = send.write_all(b"ping").await;
+                                let _ = send.finish();
+                                let _ = recv.read_to_end(64).await;
+                            }
+                        }
+                    }
+                }
+                connection.close(0u32.into(), b"done");
+            }
+            _ => println!("set ZORK_PATH_LAB=server|client"),
+        }
+        endpoint.close().await;
+    }
 }
