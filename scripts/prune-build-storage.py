@@ -195,7 +195,13 @@ def kache_binary():
 
 
 def kache_usage(binary):
-    """(used, limit) in bytes from `kache stats`, or None."""
+    """(used, limit) in bytes from `kache stats`, or None.
+
+    `Store:` reports the logical size before deduplication; kache enforces its
+    limit on the physical size (`Dedup: ... N GiB physical`), so prefer that.
+    Otherwise a deduplicated store looks over its limit forever and every run
+    would evict recent entries by age.
+    """
     output = subprocess.run([binary, 'stats'], capture_output=True, text=True).stdout
     match = re.search(r'Store:\s+([\d.]+)\s*(\w+)\s*/\s*([\d.]+)\s*(\w+)', output)
     if not match:
@@ -203,7 +209,12 @@ def kache_usage(binary):
     units = {'B': 1, 'KiB': 2**10, 'MiB': 2**20, 'GiB': 2**30, 'TiB': 2**40,
              'KB': 1e3, 'MB': 1e6, 'GB': 1e9, 'TB': 1e12}
     try:
-        return (float(match.group(1)) * units[match.group(2)], float(match.group(3)) * units[match.group(4)])
+        used = float(match.group(1)) * units[match.group(2)]
+        limit = float(match.group(3)) * units[match.group(4)]
+        physical = re.search(r'Dedup:.*?([\d.]+)\s*(\w+)\s+physical', output)
+        if physical:
+            used = float(physical.group(1)) * units[physical.group(2)]
+        return (used, limit)
     except KeyError:
         return None
 

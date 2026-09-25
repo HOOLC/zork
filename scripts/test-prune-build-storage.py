@@ -139,6 +139,15 @@ class KacheTests(unittest.TestCase):
         with patch.object(prune.subprocess, 'run', return_value=type('R', (), {'stdout': output})()):
             self.assertEqual(prune.kache_gc('kache', apply=False)['action'], 'gc')
 
+    def test_usage_prefers_physical_size_after_dedup(self):
+        output = ('Store:      24.7 GiB / 20.0 GiB (12557 entries, 124%)\n'
+                  'Dedup:      27266 unique blobs, 19.9 GiB physical, 19.7% savings\n')
+        with patch.object(prune.subprocess, 'run', return_value=type('R', (), {'stdout': output})()):
+            used, limit = prune.kache_usage('kache')
+        self.assertAlmostEqual(used / 2**30, 19.9)
+        with patch.object(prune.subprocess, 'run', return_value=type('R', (), {'stdout': output})()):
+            self.assertEqual(prune.kache_gc('kache', apply=False)['action'], 'none')
+
 
 if __name__ == '__main__':
     unittest.main()
