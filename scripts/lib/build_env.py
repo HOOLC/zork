@@ -144,6 +144,9 @@ def run_measured(command, env, root=ROOT):
     result = None
     try:
         result = subprocess.call(command, cwd=root, env=env)
+        if result == 0:
+            from build_maintenance import after_build
+            after_build(env)
         return result
     finally:
         finished_at = datetime.now(timezone.utc).isoformat()

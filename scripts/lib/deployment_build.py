@@ -91,7 +91,10 @@ def build(repo, store, kind='node', profile='dev', services=None, channel='test'
         except subprocess.CalledProcessError as error:
             # An unreadable manifest is a failed build, not an updater crash.
             raise RuntimeError(f'Cargo build failed; running deployment unchanged: {error}') from error
-        return _build(repo, store, kind, profile, services, env, channel)
+        candidate = _build(repo, store, kind, profile, services, env, channel)
+    from build_maintenance import after_build
+    after_build(env)
+    return candidate
 
 
 def _build(repo, store, kind, profile, services, env, channel):

@@ -13,8 +13,8 @@
 - ``kache gc`` until the local kache store is back under its configured limit.
 
 Only Zork paths are touched: this repository's worktrees, its build root and
-the kache store configured for it. ``--install-schedule`` installs a weekly
-launchd agent that runs ``--apply`` from the main checkout.
+the kache store configured for it. Builds start ``--apply`` automatically
+at most once a day (``scripts/lib/build_maintenance.py``); there is no schedule.
 """
 import argparse
 from datetime import datetime, timezone
@@ -23,7 +23,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import plistlib
 import re
 import shutil
 import subprocess
@@ -35,7 +34,6 @@ sys.path.insert(0, str(ROOT / 'scripts/lib'))
 from build_env import build_environment, clean_git_environment
 
 FIXED_TARGETS = {'deployment'}
-LABEL = 'ing.zork.prune-build-storage'
 RECENT_GUARD = 3600
 
 
@@ -339,49 +337,13 @@ def main_checkout():
     return entries[0][0] if entries else ROOT
 
 
-def install_schedule(python):
-    script = main_checkout() / 'scripts/prune-build-storage.py'
-    if not script.is_file():
-        raise SystemExit(f'{script} does not exist yet; merge this script into the main checkout first')
-    agents = Path.home() / 'Library/LaunchAgents'
-    agents.mkdir(parents=True, exist_ok=True)
-    plist = agents / (LABEL + '.plist')
-    log = Path.home() / 'Library/Logs/zork-prune-build-storage.log'
-    plist.write_bytes(plistlib.dumps({
-        'Label': LABEL,
-        'ProgramArguments': [python, str(script), '--apply'],
-        'EnvironmentVariables': {'PATH': '/opt/homebrew/bin:' + str(Path.home() / '.local/bin') + ':/usr/bin:/bin:/usr/sbin:/sbin'},
-        'StartCalendarInterval': {'Weekday': 0, 'Hour': 4, 'Minute': 30},
-        'StandardOutPath': str(log), 'StandardErrorPath': str(log),
-        'LowPriorityIO': True, 'Nice': 10}))
-    domain = f'gui/{os.getuid()}'
-    subprocess.run(['launchctl', 'bootout', domain + '/' + LABEL], capture_output=True)
-    subprocess.run(['launchctl', 'bootstrap', domain, str(plist)], check=True)
-    print(f'Installed {plist}: weekly (Sunday 04:30) {script} --apply; log {log}')
-
-
-def uninstall_schedule():
-    plist = Path.home() / 'Library/LaunchAgents' / (LABEL + '.plist')
-    subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}/{LABEL}'], capture_output=True)
-    plist.unlink(missing_ok=True)
-    print(f'Removed {plist}')
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--apply', action='store_true', help='Delete what the dry-run lists')
     parser.add_argument('--days', type=float, default=14, help='Remove Cargo targets untouched this long')
     parser.add_argument('--artifact-days', type=float, default=7, help='Remove artifacts/ entries untouched this long')
     parser.add_argument('--json', action='store_true')
-    schedule = parser.add_mutually_exclusive_group()
-    schedule.add_argument('--install-schedule', action='store_true', help='Install the weekly launchd agent (macOS)')
-    schedule.add_argument('--uninstall-schedule', action='store_true')
-    parser.add_argument('--python', default='/opt/homebrew/bin/python3' if Path('/opt/homebrew/bin/python3').exists() else sys.executable)
     args = parser.parse_args(argv)
-    if args.install_schedule:
-        return install_schedule(args.python)
-    if args.uninstall_schedule:
-        return uninstall_schedule()
     report = run(args)
     print(json.dumps(report, indent=2) if args.json else render(report))
     if report['errors']:

@@ -116,6 +116,8 @@ def main():
             tasks.append("-PzorkProfile=true")
         run([str(APP / "gradlew"), "-p", str(APP), "--no-daemon", *tasks], env)
         print(APP / "app/build/outputs/apk/debug/app-debug.apk")
+    from build_maintenance import after_build
+    after_build(env)
 
 
 if __name__ == "__main__":

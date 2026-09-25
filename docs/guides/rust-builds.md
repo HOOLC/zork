@@ -117,12 +117,17 @@ Android 产物或源码；适合在个人开发机定期运行。通过 `build_e
 随后调用 `cargo clean --target-dir`，不直接删除源码或数据库。
 共享目录需由同一主机专用；本机无法确认其他主机的打开文件。
 
-### 按周整理构建存储
+### 构建时自动整理构建存储
+
+仓库构建入口（`build_env.py` 运行的构建命令、部署构建、Android 构建，以及
+studio 上的 `zork-cargo`）成功后，会在后台以低优先级运行一次
+`prune-build-storage.py --apply`，每 24 小时最多一次
+（`ZORK_PRUNE_INTERVAL_HOURS` 可调，`ZORK_NO_PRUNE=1` 关闭）。清理失败不影响构建，
+日志在 `~/Library/Logs/zork-prune-build-storage.log`。不安装定时任务。
 
 ```sh
 python3 scripts/prune-build-storage.py            # 预览
-python3 scripts/prune-build-storage.py --apply    # 执行
-python3 scripts/prune-build-storage.py --install-schedule   # 安装每周 launchd 任务（主 checkout）
+python3 scripts/prune-build-storage.py --apply    # 立即执行
 ```
 
 删除来源 worktree 已不存在（登记标记，否则按 `isolated/<worktree 名>` 命名推断）或
