@@ -905,7 +905,8 @@ pub(super) struct RelayActor {
     /// These actors will exit when they have any inactivity.  Otherwise they will keep
     /// trying to maintain a connection to the relay server as needed.
     active_relays: BTreeMap<RelayUrl, ActiveRelayHandle>,
-    configured_origins: BTreeSet<String>,
+    /// Origins of configured relays that carry a bearer credential.
+    credentialed_origins: BTreeSet<String>,
     withdrawn_origins: BTreeSet<String>,
     /// The tasks for the [`ActiveRelayActor`]s in `active_relays` above.
     active_relay_tasks: JoinSet<()>,
@@ -1043,21 +1044,25 @@ impl HomeRelayWatch {
     }
 }
 
+fn credentialed_origins(relay_map: &RelayMap) -> BTreeSet<String> {
+    relay_map
+        .relays::<Vec<_>>()
+        .into_iter()
+        .filter(|config| config.auth_token.is_some())
+        .map(|config| config.url.origin().ascii_serialization())
+        .collect()
+}
+
 impl RelayActor {
     pub(super) fn new(
         config: Config,
         relay_datagram_recv_queue: mpsc::Sender<RelayRecvDatagram>,
         cancel_token: CancellationToken,
     ) -> Self {
-        let configured_origins = config
-            .relay_map
-            .urls::<Vec<_>>()
-            .into_iter()
-            .map(|url| url.origin().ascii_serialization())
-            .collect();
+        let credentialed_origins = credentialed_origins(&config.relay_map);
         Self {
             config,
-            configured_origins,
+            credentialed_origins,
             withdrawn_origins: Default::default(),
             relay_datagram_recv_queue,
             active_relays: Default::default(),
@@ -1149,6 +1154,12 @@ impl RelayActor {
 
     // RelayConfig is also the native client's bearer credential source. A map
     // update must retire the old builder; reconnecting it reuses its stale token.
+    //
+    // A removed relay without a credential follows upstream while other relays
+    // remain: it stays connected until another relay becomes home and then closes
+    // once idle, so peers still sending through it while they learn the new home
+    // are not cut off. Once the map is empty no relay will take over and the
+    // endpoint is meant to be off the relay (enrollment), so it is retired.
     fn on_config_change(&mut self) {
         let current_origins: BTreeSet<_> = self
             .config
@@ -1158,28 +1169,28 @@ impl RelayActor {
             .map(|url| url.origin().ascii_serialization())
             .collect();
         self.withdrawn_origins.extend(
-            self.configured_origins
+            self.credentialed_origins
                 .difference(&current_origins)
                 .cloned(),
         );
         self.withdrawn_origins
             .retain(|origin| !current_origins.contains(origin));
-        self.configured_origins = current_origins;
-        let changed: Vec<_> = self
-            .active_relays
-            .iter()
-            .filter_map(|(url, active)| {
-                let current = self.config.relay_map.get(url);
-                let before = active.config.as_ref().and_then(|c| c.auth_token.as_ref());
-                let after = current.as_ref().and_then(|c| c.auth_token.as_ref());
-                (before != after
-                    || (active.config.is_some() && current.is_none())
-                    || self
-                        .withdrawn_origins
-                        .contains(&url.origin().ascii_serialization()))
-                .then_some((url.clone(), current.is_some()))
-            })
-            .collect();
+        self.credentialed_origins = credentialed_origins(&self.config.relay_map);
+        let map_empty = self.config.relay_map.is_empty();
+        let mut changed = Vec::new();
+        for (url, active) in &self.active_relays {
+            let current = self.config.relay_map.get(url);
+            let before = active.config.as_ref().and_then(|c| c.auth_token.as_ref());
+            let after = current.as_ref().and_then(|c| c.auth_token.as_ref());
+            if before != after
+                || (map_empty && active.config.is_some())
+                || self
+                    .withdrawn_origins
+                    .contains(&url.origin().ascii_serialization())
+            {
+                changed.push((url.clone(), current.is_some()));
+            }
+        }
         for (url, present) in changed {
             if let Some(old) = self.active_relays.remove(&url) {
                 old.stop_token.cancel();

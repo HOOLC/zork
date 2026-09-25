@@ -84,7 +84,7 @@ try {
   processes.push(station);
   const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_HUB");
   const budget = budgets.get(budgets.idFromName("primary"));
-  await until(async () => Number((await budget.statistics())?.bytes) > 128, "owned Station native relay traffic");
+  await until(async () => (await budget.authenticated()) > 0, "owned Station native relay traffic");
   pass("owned Station completes native relay handshakes independently of the desktop account");
   const oldAccess = account.token;
   await exec(path.resolve(binDir, "zork"), ["account", "refresh", "--data", nodeRoot, "--json"], { env, timeout: 20000 });

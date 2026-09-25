@@ -63,6 +63,10 @@ export class RelayHub extends ProductionRelayHub {
   statistics(key = "global") {
     return this.quota(key);
   }
+  /** Open connections whose client proved its EndpointId (signed the challenge). */
+  authenticated() {
+    return this.ctx.getWebSockets().filter((ws) => ws.readyState === WebSocket.OPEN && (ws.deserializeAttachment() as any)?.ep).length;
+  }
   persisted(key = "global") {
     return this.ctx.storage.kv.get("quota:" + key) ?? null;
   }

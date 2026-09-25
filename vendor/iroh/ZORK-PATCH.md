@@ -5,10 +5,19 @@ This is the crates.io source of iroh 1.0.3, upstream commit
 The original licenses, manifest, source and tests are retained.
 
 The local patch makes a relay-map update retire an active relay actor when its
-bearer credential changes or its configured relay is removed. The replacement
-actor reads the current config. Upstream only schedules address discovery on
-these updates, so the existing actor's ClientBuilder otherwise keeps using the
-old credential, including after logout and a subsequent login.
+bearer credential changes, when a relay that carried a credential is removed,
+or when the map becomes empty. The replacement actor reads the current config.
+Upstream only schedules address discovery on these updates, so the existing
+actor's ClientBuilder otherwise keeps using the old credential, including after
+logout and a subsequent login. A removed credential-bearing origin is withdrawn:
+peers' discovery records cannot recreate it as an anonymous relay.
+
+A relay without a credential that is removed while other relays remain keeps
+upstream behaviour: it stays home until the next net report picks a remaining
+relay, then closes once idle. Retiring it at once dropped datagrams from peers
+still addressing it (upstream `endpoint_relay_map_change`). An emptied map
+(enrollment giving up its relay) has no successor, so the connection closes
+immediately.
 
 Only relay admission lifecycle changes. Discovery, direct transports, relay
 selection, DNS and hole-punching policy remain upstream behavior. Native

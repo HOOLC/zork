@@ -104,7 +104,7 @@ try {
   pass("local Station is ready without an account or Google configuration");
   const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_HUB");
   const budget = budgets.get(budgets.idFromName("primary"));
-  await until(async () => Number((await budget.statistics())?.bytes) > 128, "native iroh relay handshakes without credentials");
+  await until(async () => (await budget.authenticated()) > 0, "native iroh relay handshakes without credentials");
   pass("Station data and invitation endpoints complete native iroh relay handshakes anonymously");
   assert.equal(station.pid, pid);
   assert.equal(station.exitCode, null);
