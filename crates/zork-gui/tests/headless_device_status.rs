@@ -91,7 +91,7 @@ fn local_device_row(output: &std::path::Path) -> anyhow::Result<()> {
         .collect();
     anyhow::ensure!(
         rows.first().map(|e| (e.id.as_str(), e.label.as_str()))
-            == Some(("mesh-peer-mini1", "A（mini1） · 本机 · 直连")),
+            == Some(("mesh-peer-mini1", "A（mini1） · 直连 · 本机")),
         "this machine must lead, tagged in words: {:?}",
         rows.iter().map(|e| (&e.id, &e.label)).collect::<Vec<_>>()
     );

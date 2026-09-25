@@ -252,8 +252,8 @@ pub fn tag(id: impl Into<gpui::ElementId>, text: &str) -> gpui::Stateful<gpui::D
         .child(text.to_owned())
 }
 
-/// `label` with an optional `tag` after the name, included in its
-/// accessible wording ("A（机器名）· 本机 · 直连").
+/// `label` with an optional `tag` after the status dot, so the dot keeps
+/// its place on every row; read out in the same order ("A（机器名）· 直连 · 本机").
 pub fn tagged_label(
     id: impl Into<gpui::ElementId>,
     name: impl Into<DeviceName>,
@@ -298,7 +298,7 @@ pub fn tagged_label(
     let text = name_text(&id, &name);
     let tag_id = format!("device-tag-{id}");
     let spoken = match tag_text {
-        Some(tag) => format!("{} · {tag} · {detail}", name.accessible()),
+        Some(tag) => format!("{} · {detail} · {tag}", name.accessible()),
         None => format!("{} · {detail}", name.accessible()),
     };
     div()
@@ -313,7 +313,7 @@ pub fn tagged_label(
             18.,
         ))
         .child(text)
-        .when_some(tag_text, |v, text| v.child(tag(tag_id, text)))
         .child(badge)
+        .when_some(tag_text, |v, text| v.child(tag(tag_id, text)))
         .automation(AutomationRole::Status, spoken)
 }
