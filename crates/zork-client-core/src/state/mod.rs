@@ -14,7 +14,7 @@ mod outbox;
 pub use new_chat::{NewChat, NewChatData};
 mod replication;
 pub use agent_catalog::{AgentData, AgentSubscription, AgentUpdate, Agents};
-pub use outbox::Outbox;
+pub use outbox::{Outbox, EMPTY_COMMENT_REPLY};
 mod conversation;
 mod message_activity;
 pub use message_activity::{MessageActivity, MessageArrivals};

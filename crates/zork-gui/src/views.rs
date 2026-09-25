@@ -883,10 +883,6 @@ impl RootView {
             zork_ui::components::region::invalidate_all(cx);
             return;
         }
-        // Every draft quote needs its own reply, or it is removed first.
-        if !self.drafts_ready(cx) {
-            return;
-        }
         // Submit the core's current draft, not a display snapshot that may
         // still show the previous text until its subscription update arrives.
         let text = self.core_device.draft(&id).text.clone();

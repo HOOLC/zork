@@ -159,7 +159,6 @@ pub struct DraftText {
     pub reply_placeholder: String,
     pub remove: String,
     pub extra_placeholder: String,
-    pub reply_required: String,
     pub duplicate: String,
 }
 impl Default for DraftText {
@@ -168,18 +167,11 @@ impl Default for DraftText {
             reply_placeholder: "回复这段…".into(),
             remove: "移除这段引用".into(),
             extra_placeholder: "补充说明（可选）".into(),
-            reply_required: "每段引用都写一句回复，或者移除它".into(),
             duplicate: "这段已经在引用里了".into(),
         }
     }
 }
 
-/// Whether every draft has its own reply (sending is refused otherwise).
-pub fn drafts_complete(comments: &[DraftComment]) -> bool {
-    comments
-        .iter()
-        .all(|comment| !comment.comment.trim().is_empty())
-}
 
 /// Whether `source` (same message and passage) is already drafted.
 pub fn already_drafted(comments: &[DraftComment], source: &crate::comments::CommentSource) -> bool {
@@ -293,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicates_and_empty_replies_are_detected() {
+    fn duplicates_are_detected() {
         let source = crate::comments::CommentSource {
             message_id: Some("m1".into()),
             quote: "触控区重叠".into(),
@@ -305,7 +297,6 @@ mod tests {
             comment: " ".into(),
         };
         assert!(already_drafted(std::slice::from_ref(&draft), &source));
-        assert!(!drafts_complete(std::slice::from_ref(&draft)));
         let other = crate::comments::CommentSource {
             message_id: Some("m2".into()),
             ..source

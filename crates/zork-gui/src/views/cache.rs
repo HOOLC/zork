@@ -159,6 +159,12 @@ impl RootView {
                 // attachments together. Do not race it with a second UI write.
                 self.refresh_queued();
             }
+            // Core refuses quote passages without their own reply.
+            Err(error)
+                if error.to_string() == zork_client_core::state::EMPTY_COMMENT_REPLY =>
+            {
+                self.refuse_empty_draft_reply(cx)
+            }
             Err(error) => self.error = Some(format!("保存待发送消息失败：{error}")),
         }
         zork_ui::components::region::invalidate(cx, &["composer", "transcript"]);

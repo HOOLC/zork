@@ -184,11 +184,9 @@ impl RootView {
         zork_ui::components::region::invalidate(cx, &["composer", "transcript", "overlays"]);
     }
 
-    /// Sending with a draft quote that has no reply is refused.
-    pub(super) fn drafts_ready(&mut self, cx: &mut Context<Self>) -> bool {
-        if ui_comments::drafts_complete(self.current_comments()) {
-            return true;
-        }
+    /// Core refused the send: a draft quote has no reply of its own. Say so
+    /// and put the cursor in the first empty reply.
+    pub(super) fn refuse_empty_draft_reply(&mut self, cx: &mut Context<Self>) {
         self.show_hint(self.locale.text("draft_reply_required").into(), cx);
         if let Some(empty) = self
             .current_comments()
@@ -197,7 +195,6 @@ impl RootView {
         {
             self.focus_draft = Some(empty.id.clone());
         }
-        false
     }
 
     /// Draft passages by source message id (dotted underlines in place).
