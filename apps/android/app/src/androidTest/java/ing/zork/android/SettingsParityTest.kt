@@ -27,6 +27,21 @@ class SettingsParityTest {
         }
     }
 
+    /** The Mesh list leads with this phone, tagged "本机" in words (read out
+     * with its name), and offers no action on it. */
+    @Test fun meshListMarksThisDevice() {
+        launch("home").use {
+            settle()
+            val local = await("C（Pixel 8） · 本机")
+            assertFalse("this device has no page to open", local.isClickable)
+            val first = find("mini1")!!
+            val bounds = android.graphics.Rect().also(local::getBoundsInScreen)
+            val next = android.graphics.Rect().also(first::getBoundsInScreen)
+            assertTrue("this device comes first", bounds.top < next.top)
+            capture("mesh-local-device")
+        }
+    }
+
     @Test fun resourceSettingsExposeServiceLogs() {
         launch("services").use {
             settle(); click("设计预览"); click("stdout.log"); await("preview server ready")

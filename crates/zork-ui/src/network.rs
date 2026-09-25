@@ -22,6 +22,9 @@ pub struct Peer {
     /// peer. Node-to-node connectivity is worded, never drawn as a status dot.
     pub linked: Option<bool>,
     pub permission: String,
+    /// This machine itself, as core decides (`LocalDevice`): tagged "本机"
+    /// and never offered for removal.
+    pub local: bool,
 }
 #[derive(Clone, Default)]
 pub struct NetworkData {
@@ -34,6 +37,8 @@ pub struct NetworkData {
     pub busy: bool,
     pub notice: Option<String>,
 }
+/// The quiet tag after this machine's own device name.
+pub const LOCAL_TAG: &str = "本机";
 #[derive(Clone, Debug)]
 pub enum NetworkAction {
     Toggle(bool),
@@ -104,22 +109,25 @@ pub fn network<V: 'static>(
         let action = action.clone();
         let id = peer.id.clone();
         let busy = data.busy;
-        let row_menu = disclosure::more_menu(
-            format!("mesh-peer-more-{id}"),
-            vec![if busy {
-                Item::new("remove", "移除").disabled()
-            } else {
-                Item::new("remove", "移除")
-            }],
-            true,
-            window,
-            cx,
-            move |v, key, _, cx| {
-                if key == "remove" {
-                    action(v, NetworkAction::Remove(id.clone()), cx)
-                }
-            },
-        );
+        // This machine cannot remove itself from its own list.
+        let row_menu = (!peer.local).then(|| {
+            disclosure::more_menu(
+                format!("mesh-peer-more-{id}"),
+                vec![if busy {
+                    Item::new("remove", "移除").disabled()
+                } else {
+                    Item::new("remove", "移除")
+                }],
+                true,
+                window,
+                cx,
+                move |v, key, _, cx| {
+                    if key == "remove" {
+                        action(v, NetworkAction::Remove(id.clone()), cx)
+                    }
+                },
+            )
+        });
         let group = format!("mesh-peer-row-{}", peer.id);
         list = list.child(
             div()
@@ -129,12 +137,13 @@ pub fn network<V: 'static>(
                 .gap_2()
                 .min_h(px(40.))
                 .child(div().min_w_0().text_size(px(14.)).child(match &peer.status {
-                    Some(status) => crate::device_name::label(
+                    Some(status) => crate::device_name::tagged_label(
                         format!("mesh-peer-{}", peer.id),
                         crate::device_name::DeviceName::new(peer.name.clone(), peer.machine.clone())
                             .with_color(peer.color.clone()),
                         status,
                         None,
+                        peer.local.then_some(LOCAL_TAG),
                     )
                     .into_any_element(),
                     None => {
@@ -158,7 +167,20 @@ pub fn network<V: 'static>(
                                 18.,
                             ))
                             .child(crate::device_name::name_text(&id, &name))
-                            .automation(AutomationRole::Status, name.accessible())
+                            .when(peer.local, |v| {
+                                v.child(crate::device_name::tag(
+                                    format!("device-tag-{id}"),
+                                    LOCAL_TAG,
+                                ))
+                            })
+                            .automation(
+                                AutomationRole::Status,
+                                if peer.local {
+                                    format!("{} · {LOCAL_TAG}", name.accessible())
+                                } else {
+                                    name.accessible()
+                                },
+                            )
                             .into_any_element()
                     }
                 }))
@@ -180,15 +202,18 @@ pub fn network<V: 'static>(
                 })
                 .child(div().flex_1())
                 // Rare row actions stay out of sight until the row is hovered.
-                .child(
-                    div()
-                        .opacity(0.)
-                        .group_hover(group, |s| s.opacity(1.))
-                        .child(row_menu),
-                ),
+                .when_some(row_menu, |v, menu| {
+                    v.child(
+                        div()
+                            .opacity(0.)
+                            .group_hover(group, |s| s.opacity(1.))
+                            .child(menu),
+                    )
+                }),
         );
     }
     let count = data.peers.len();
+    let others = data.peers.iter().filter(|peer| !peer.local).count();
     div()
         .flex()
         .flex_col()
@@ -207,7 +232,7 @@ pub fn network<V: 'static>(
                 .child(more),
         )
         .child(list)
-        .when(data.peers.is_empty(), |v| {
+        .when(others == 0, |v| {
             v.child(disclosure::meta("还没有其他设备。").py_2())
         })
         .child(
@@ -411,6 +436,17 @@ impl NetworkStory {
                     vec![]
                 } else {
                     vec![
+                        // mini1 is this machine: its own row comes first.
+                        Peer {
+                            id: "mini1".into(),
+                            name: "A".into(),
+                            machine: Some("mini1".into()),
+                            color: Some("seq:0".into()),
+                            status: Some(crate::device_name::DeviceStatus::Direct),
+                            linked: None,
+                            permission: String::new(),
+                            local: true,
+                        },
                         Peer {
                             id: "mini2".into(),
                             name: "B".into(),
@@ -419,6 +455,7 @@ impl NetworkStory {
                             status: Some(crate::device_name::DeviceStatus::Direct),
                             linked: Some(true),
                             permission: "设备 · 协作节点".into(),
+                            local: false,
                         },
                         // Reachable from mini1, but not from this client.
                         Peer {
@@ -429,6 +466,7 @@ impl NetworkStory {
                             status: Some(crate::device_name::DeviceStatus::Offline),
                             linked: Some(true),
                             permission: "设备 · 协作节点".into(),
+                            local: false,
                         },
                         Peer {
                             id: "pixel".into(),
@@ -438,6 +476,7 @@ impl NetworkStory {
                             status: None,
                             linked: Some(false),
                             permission: "客户端 · 可管理此设备".into(),
+                            local: false,
                         },
                     ]
                 },
@@ -609,6 +648,7 @@ impl gpui::Render for NetworkStory {
                                         "设备 · 通过 Mesh 授权协作"
                                     }
                                     .into(),
+                                    local: false,
                                 });
                                 v.open = false;
                                 v.data.notice = None;

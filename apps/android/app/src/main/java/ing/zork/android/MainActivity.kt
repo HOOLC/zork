@@ -199,7 +199,8 @@ internal fun ClientScreen(model: ClientViewModel) {
                 adb = model.adbSettings, adbError = model.adbError, adbAction = model::adbAction, adbRefresh = model::refreshAdb,
                 account = model.account, accountError = model.accountError, accountAction = model::accountAction,
                 dataReset = model.dataReset, dataResetError = model.dataResetError, clearData = model::clearData,
-                home = shown.workbench.home, openChat = model::openArchivedChat, archiveChat = model::archiveChat))
+                home = shown.workbench.home, openChat = model::openArchivedChat, archiveChat = model::archiveChat),
+                localDevice = model.localDevice)
         }
     } else if (shown.newChat != null) {
         NewChatPage(shown.newChat, if (active) model::back else ({}),

@@ -14,6 +14,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.launch
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,7 +88,7 @@ internal class SettingsActions(
 )
 
 @Composable
-internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actions: SettingsActions, modifier: Modifier = Modifier) {
+internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actions: SettingsActions, modifier: Modifier = Modifier, localDevice: Peer? = null) {
     if (state.page == "account") { AccountSettings(actions, modifier); return }
     if (state.page == "adb") { AdbSettings(actions, modifier); return }
     if (state.page == "notifications") {
@@ -144,6 +150,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 SectionTitle("Mesh")
                 SettingsListGroup {
                     SettingsListRow("模型连接", R.drawable.ic_mesh, value = connectionCount(state), action = { actions.page("model-connections") })
+                    localDevice?.let { LocalDeviceRow(it) }
                     peers.forEach { peer ->
                         SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp, colorKey = peer.colorKey) },
                             trailing = { if (peer.status.state !in listOf("direct", "connected")) DeviceStatusBadge(peer.status) },
@@ -251,3 +258,32 @@ private fun ArchivedSettings(actions: SettingsActions, modifier: Modifier) {
     Text(title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle,
         modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 2.dp))
 }
+
+/** This phone itself, first among the Mesh devices: the same short name and
+ * mark as every other device, a quiet "本机" after the name (not a coloured
+ * badge), and no action — it has no device page and cannot be removed here.
+ * A long press shows the machine name, like the device strip. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocalDeviceRow(device: Peer) {
+    val tip = rememberTooltipState()
+    val scope = rememberCoroutineScope()
+    val machine = device.machine
+    MachineNameTooltip(machine, tip) {
+        ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            .then(if (machine == null) Modifier else Modifier.pointerInput(machine) {
+                detectTapGestures(onLongPress = { scope.launch { tip.show() } })
+            })
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${device.spokenName} · $LOCAL_DEVICE_TAG"
+                if (machine != null) onLongClick("机器名称") { scope.launch { tip.show() }; true }
+            }) {
+            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { DeviceMark(device.name, 24.dp, colorKey = device.colorKey) }
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(device.name, Modifier.weight(1f, fill = false), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(LOCAL_DEVICE_TAG, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1)
+            }
+        }
+    }
+}
+internal const val LOCAL_DEVICE_TAG = "本机"

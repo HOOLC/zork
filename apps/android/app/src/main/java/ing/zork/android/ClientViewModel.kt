@@ -112,6 +112,9 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     var identity by mutableStateOf("")
         private set
     var peers by mutableStateOf(emptyList<Peer>())
+    /** This phone as its Mesh names it (core decides which device is local);
+     * `null` until it belongs to a Mesh the client knows. */
+    var localDevice by mutableStateOf<Peer?>(null)
         private set
     var activePeer by mutableStateOf<Peer?>(null)
         private set
@@ -414,6 +417,9 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         peers = value.optJSONArray("nodes").objects().map {
             Peer(it.text("id"), it.text("name"), it.optJSONObject("mesh")?.text("addr") ?: "", it.deviceStatus(),
                 it.text("machine_name").ifBlank { null }, it.text("color_key").ifBlank { null })
+        }
+        localDevice = value.optJSONObject("local")?.let {
+            Peer(it.text("id"), it.text("name"), "", machine = it.text("machine_name").ifBlank { null }, colorKey = it.text("color_key").ifBlank { null })
         }
         DeviceColors.publish(peers)
         activePeer = peers.find { it.id == (previous ?: value.text("selected_peer")) }

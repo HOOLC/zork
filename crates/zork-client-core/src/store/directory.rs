@@ -146,6 +146,31 @@ impl ClientStore {
         }))
     }
 
+    /// This machine as its Mesh names it, for device lists: its own Station
+    /// when this client runs one, else this client's identity (a phone). The
+    /// rule is `LocalDevice`'s. `None` while that identity is in no Mesh this
+    /// client knows, so no row is shown under a guessed name.
+    pub fn local_device_name(&self) -> Result<Option<zork_config::membership::ResolvedName>> {
+        let identity: Option<String> = self.get("device", "identity")?;
+        let nodes = self.nodes()?;
+        let conn = self.0.lock().unwrap();
+        let mut origins = std::collections::HashMap::new();
+        for node in &nodes {
+            if let Some(origin) = super::origin_of(&conn, node)? {
+                origins.insert(origin, node.id.clone());
+            }
+        }
+        let local = crate::local_device::LocalDevice::new(&nodes, &origins, identity.as_deref());
+        let Some(origin) = local.primary() else {
+            return Ok(None);
+        };
+        let authority = nodes
+            .iter()
+            .find(|node| node.local)
+            .and_then(|node| node.group.as_deref());
+        Ok(display_name(&naming(&conn)?, authority, origin))
+    }
+
     /// Keeps a display-name directory returned by a rename, if it is newer.
     pub fn apply_display_names(&self, names: &MeshNames) -> Result<bool> {
         if names.validate().is_err() {
@@ -368,6 +393,45 @@ mod tests {
         assert!(store
             .apply_mesh_directory(&a.origin, &phone.origin, &old)
             .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn this_machine_is_named_like_every_other_device() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let store = ClientStore::open(root.path())?;
+        let (a, b, phone) = (device('y'), device('b'), device('d'));
+        let group = MeshGroup {
+            authority: a.origin.clone(),
+            revision: 1,
+            members: vec![a.clone(), b.clone()],
+            clients: vec![phone.clone()],
+        };
+        store.save_node(&saved(&a, &a.origin))?;
+        // Without an identity in a known Mesh there is no row to show.
+        assert_eq!(store.local_device_name()?, None);
+        store.put("device", "identity", &phone.origin)?;
+        assert_eq!(store.local_device_name()?, None);
+        store.apply_mesh_names(&group, None)?;
+        // A phone is its own client identity, named in join order.
+        let own = store.local_device_name()?.unwrap();
+        assert_eq!(
+            (own.origin.as_str(), own.display.as_str()),
+            (phone.origin.as_str(), "C")
+        );
+        assert_eq!(
+            (own.machine.as_str(), own.color_key()),
+            ("d", "seq:2".to_owned())
+        );
+        // A client running its own Station is that Station.
+        let mut station = saved(&b, &a.origin);
+        station.local = true;
+        store.save_node(&station)?;
+        let own = store.local_device_name()?.unwrap();
+        assert_eq!(
+            (own.origin.as_str(), own.display.as_str()),
+            (b.origin.as_str(), "B")
+        );
         Ok(())
     }
 }
