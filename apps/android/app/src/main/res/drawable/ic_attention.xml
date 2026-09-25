@@ -1,6 +1,5 @@
 <!-- Generated from crates/zork-ui/assets/icons/attention.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-  <path android:pathData="M10.35 4.35Q12 1.8 13.65 4.35L21 17.55Q22.5 20.3 19.3 20.3H4.7Q1.5 20.3 3 17.55Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
-  <path android:pathData="M12 8.1v5.2" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
-  <path android:pathData="M11.05 16.65a0.95 0.95 0 1 0 1.9 0a0.95 0.95 0 1 0 -1.9 0Z" android:fillColor="#24272B" />
+  <path android:pathData="M10.1 4.7c.9-1.6 2.9-1.6 3.8 0l7 12.1c1 1.8 0 3.2-2 3.2H5.1c-2 0-3-1.4-2-3.2Z M12 9v4.5" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="M11.1 17a0.9 0.9 0 1 0 1.8 0a0.9 0.9 0 1 0 -1.8 0Z" android:fillColor="#24272B" android:strokeColor="#00000000" android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>

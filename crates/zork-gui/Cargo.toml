@@ -133,6 +133,12 @@ harness = false
 required-features = ["headless-bench"]
 
 [[test]]
+name = "headless_device_status"
+path = "tests/headless_device_status.rs"
+harness = false
+required-features = ["headless-bench"]
+
+[[test]]
 name = "headless_conversation_files"
 path = "tests/headless_conversation_files.rs"
 harness = false

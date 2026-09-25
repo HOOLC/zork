@@ -207,6 +207,26 @@ class SettingsParityTest {
         }
     }
 
+    @Test fun deviceListShowsCoreStatusAndNeverInventsConnecting() {
+        // A missing or unopened status is "not connected", not an attempt in progress.
+        assertEquals("not_connected", org.json.JSONObject("{}").deviceStatus().state)
+        assertEquals("未连接", deviceStatusText(org.json.JSONObject("""{"status":{"state":"not_connected"}}""").deviceStatus()))
+        assertEquals("连接中", deviceStatusText(org.json.JSONObject("""{"status":{"state":"connecting"}}""").deviceStatus()))
+        assertEquals("中继", deviceStatusText(org.json.JSONObject("""{"status":{"state":"relay"}}""").deviceStatus()))
+        launch("home").use {
+            settle(); await("Mesh"); await("mini1"); await("mini2")
+            // mini1 is direct: the normal state carries no text; mini2's offline state does.
+            fun shown(text: String) = nodes().any { it.isVisibleToUser &&
+                listOf(it.text, it.contentDescription).any { value -> value?.toString()?.contains(text) == true } }
+            val deadline = SystemClock.uptimeMillis() + 5000
+            while (!shown("离线") && SystemClock.uptimeMillis() < deadline) Thread.sleep(80)
+            assertTrue("mini2's offline status is not shown", shown("离线"))
+            assertFalse("a device shows an invented 连接中", shown("连接中"))
+            assertFalse(shown("未连接"))
+            capture("device-list")
+        }
+    }
+
     @Test fun deviceSettingsDoNotExposeRoleOrGrantConfiguration() {
         launch("device").use {
             settle(); await("模型连接"); await("服务")

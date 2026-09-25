@@ -18,7 +18,10 @@ pub struct DirectoryData {
     pub nodes: Arc<Vec<SavedNode>>,
     pub local_enabled: bool,
     pub mesh_identity: Option<String>,
+    /// One entry per saved node: the status every surface shows next to its name.
     pub device_statuses: Arc<HashMap<String, zork_client_types::device::DeviceStatus>>,
+    /// Mesh origin → saved node id, so Mesh member lists can show the same status.
+    pub origins: Arc<HashMap<String, String>>,
     pub info: Arc<HashMap<String, Value>>,
     pub updating: HashSet<String>,
     pub error: Option<String>,
@@ -246,31 +249,58 @@ impl Directory {
         change(&mut state);
         self.state.publish(state.clone());
     }
+    /// Republish each node's status as projected by its own `Device`, so the
+    /// switcher, device lists, navigation and Mesh lists share one value.
     fn publish_device_statuses(&self) {
         let _publication = self.status_publication.lock().unwrap();
         let snapshot = self.snapshot();
         let readiness = self.transport.readiness();
-        let devices = self.devices.lock().unwrap();
+        let devices = self
+            .devices
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, (device, _))| (id.clone(), device.clone()))
+            .collect::<HashMap<_, _>>();
+        let mut origins = HashMap::new();
         let statuses = snapshot
             .nodes
             .iter()
             .map(|node| {
-                let data = devices.get(&node.id).map(|(device, _)| device.snapshot());
-                let status = crate::device_status::project(
-                    Some(&readiness),
-                    data.as_ref().and_then(|data| data.online),
-                    &data.as_ref().map(|data| data.route).unwrap_or_default(),
-                    data.as_ref().is_some_and(|data| data.revoked),
-                );
+                let device = devices.get(&node.id);
+                let origin = node
+                    .mesh
+                    .as_ref()
+                    .map(|mesh| mesh.origin.clone())
+                    .or_else(|| device.and_then(|device| device.snapshot().mesh.origin.clone()))
+                    .or_else(|| self.store.get(&node.id, "mesh-origin").ok().flatten());
+                if let Some(origin) = origin {
+                    origins.insert(origin, node.id.clone());
+                }
+                let status = match device {
+                    Some(device) => {
+                        // Keep the device's own projection on the current transport.
+                        device.set_mesh_readiness(readiness.clone());
+                        device.snapshot().status.clone()
+                    }
+                    None => crate::device_status::unconnected(Some(&readiness)),
+                };
                 (node.id.clone(), status)
             })
             .collect::<HashMap<_, _>>();
-        drop(devices);
+        let origins_changed = *snapshot.origins != origins;
         if *snapshot.device_statuses != statuses {
             if let Some(resources) = self.resources.get() {
                 resources.set_device_statuses(&statuses);
             }
-            self.commit(|s| s.device_statuses = Arc::new(statuses));
+            self.commit(|s| {
+                s.device_statuses = Arc::new(statuses);
+                if origins_changed {
+                    s.origins = Arc::new(origins);
+                }
+            });
+        } else if origins_changed {
+            self.commit(|s| s.origins = Arc::new(origins));
         }
     }
     fn publish_nodes(&self) -> Result<()> {
@@ -391,6 +421,21 @@ impl Directory {
             .cloned()
             .unwrap_or_default()
     }
+    /// The status of the saved node with this Mesh origin, if the client knows it.
+    pub fn device_status_for_origin(
+        &self,
+        origin: &str,
+    ) -> Option<zork_client_types::device::DeviceStatus> {
+        let snapshot = self.snapshot();
+        let id = snapshot.origins.get(origin)?;
+        Some(
+            snapshot
+                .device_statuses
+                .get(id)
+                .cloned()
+                .unwrap_or_default(),
+        )
+    }
     pub fn node(&self, id: &str) -> Option<SavedNode> {
         self.snapshot()
             .nodes
@@ -451,41 +496,73 @@ impl Directory {
         let task = client.spawn(async move {
             let mut retry = zork_notify::retry::Retry::default();
             let mut previous_online = None;
+            // `changed()` acknowledges its batch, so its domains must be used
+            // here; a later `snapshot()` would report none and skip the status.
+            let mut update = updates.snapshot();
             loop {
                 let mut failed = false;
-                let update = updates.snapshot();
                 if let Some(directory) = weak.upgrade() {
-                    if binding.is_some_and(|binding|directory.ensure_connection(&anchor,binding).is_err()){return;}
-                    if update.domains.contains(crate::state::Domains::CONNECTION) {
+                    if binding.is_some_and(|binding| {
+                        directory.ensure_connection(&anchor, binding).is_err()
+                    }) {
+                        return;
+                    }
+                    if update
+                        .domains
+                        .contains(crate::state::Domains::CONNECTION | crate::state::Domains::MESH)
+                    {
                         observed_device.set_mesh_readiness(directory.transport.readiness());
                         directory.publish_device_statuses();
                     }
-                    directory.accept_applications(&anchor,&update.state);
+                    directory.accept_applications(&anchor, &update.state);
 
                     if update.state.online != previous_online {
                         previous_online = update.state.online;
-                        if directory.snapshot().nodes.iter().any(|node| node.id == anchor && node.local) {
+                        if directory
+                            .snapshot()
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == anchor && node.local)
+                        {
                             let host = directory.clone();
                             tokio::task::spawn_blocking(move || host.refresh_host_status());
                         }
                     }
-                    if let (Some(origin),Some(group)) = (&update.state.mesh.origin,&update.state.mesh.group) {
-                        if let Err(error) = directory.sync_members(&anchor,origin,group.clone()).await {
+                    if let (Some(origin), Some(group)) =
+                        (&update.state.mesh.origin, &update.state.mesh.group)
+                    {
+                        if let Err(error) =
+                            directory.sync_members(&anchor, origin, group.clone()).await
+                        {
                             failed = true;
-                            directory.commit(|s|s.error=Some(format!("设备列表暂未同步：{error}")));
+                            directory
+                                .commit(|s| s.error = Some(format!("设备列表暂未同步：{error}")));
                         }
                     }
                     let _ = directory.publish_nodes();
-                } else { return; }
-                if failed {
-                    tokio::select! { change=updates.changed()=>if change.is_none(){return;}, _=retry.wait()=>{} }
+                } else {
+                    return;
+                }
+                let next = if failed {
+                    let change = tokio::select! {
+                        change = updates.changed() => Some(change),
+                        _ = retry.wait() => None,
+                    };
+                    change.unwrap_or_else(|| Some(updates.snapshot()))
                 } else {
                     retry.reset();
-                    if updates.changed().await.is_none() { return; }
+                    updates.changed().await
+                };
+                match next {
+                    Some(next) => update = next,
+                    None => return,
                 }
             }
         });
         devices.insert(id, (device, task));
+        drop(devices);
+        // A reused device may already be connected; do not wait for its next change.
+        self.publish_device_statuses();
     }
     pub fn remote_input(origin: String, name: String, address: String) -> Result<SavedNode> {
         let name = zork_config::membership::validate_device_name(&name)?;
@@ -839,6 +916,155 @@ impl Drop for Directory {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    async fn eventually(what: &str, mut condition: impl FnMut() -> bool) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while !condition() {
+            assert!(tokio::time::Instant::now() < deadline, "timed out: {what}");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Every saved node gets exactly one status, shared by all readers; nodes the
+    /// client never opened are "not connected", never a fake 连接中.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn every_node_has_one_status_and_connecting_only_while_attempting() {
+        use crate::api::{ConnectionRoute, ConnectionScope};
+        use axum::{
+            http::StatusCode,
+            response::{sse, IntoResponse},
+            routing::get,
+            Router,
+        };
+        use futures_util::StreamExt;
+        use zork_client_types::device::DeviceStatus;
+        // A station whose event stream opens and stays silent until `up` drops.
+        let (up, up_rx) = tokio::sync::watch::channel(true);
+        let router = Router::new().route(
+            "/v1/im/events",
+            get(move || {
+                let mut up = up_rx.clone();
+                async move {
+                    if !*up.borrow() {
+                        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                    }
+                    let end = futures_util::stream::once(async move {
+                        let _ = up.wait_for(|up| !*up).await;
+                    })
+                    .filter_map(|_| async { None::<Result<sse::Event, std::convert::Infallible>> });
+                    sse::Sse::new(end).into_response()
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+
+        let root = tempfile::tempdir().unwrap();
+        let directory = Directory::open(root.path()).unwrap();
+        let transport = directory.transport.clone();
+        tokio::task::spawn_blocking(move || {
+            transport.start_on(
+                &[],
+                Some(&zork_config::MeshConfig {
+                    offline: true,
+                    ..Default::default()
+                }),
+            )
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        let node = |id: &str, url: &str, mesh: Option<&str>| SavedNode {
+            id: id.into(),
+            name: id.into(),
+            url: url.into(),
+            token: None,
+            local: false,
+            group: None,
+            mesh: mesh.map(|origin| RemoteNode {
+                routes: None,
+                origin: origin.into(),
+                addr: None,
+            }),
+        };
+        let remote = "key:unopened-remote";
+        for saved in [
+            node("opened", &url, None),
+            node("unopened", "http://127.0.0.1:9", None),
+            node(remote, "", Some(remote)),
+        ] {
+            directory.store.save_node(&saved).unwrap();
+        }
+        directory.publish_nodes().unwrap();
+        let status = |id: &str| directory.device_status(id);
+        for id in ["opened", "unopened", remote] {
+            assert_eq!(status(id), DeviceStatus::NotConnected, "{id}");
+        }
+        assert_eq!(status("never-saved"), DeviceStatus::NotConnected);
+        assert_eq!(
+            directory.device_status_for_origin(remote),
+            Some(DeviceStatus::NotConnected)
+        );
+        assert_eq!(directory.device_status_for_origin("key:stranger"), None);
+        assert!(directory
+            .new_chat_devices("opened")
+            .options
+            .iter()
+            .all(|option| option.status == Some(DeviceStatus::NotConnected)));
+
+        // Binding alone opens nothing; the status must stay honest.
+        let (_, client) = directory.connection("opened").unwrap();
+        let device = Device::open(
+            client.clone(),
+            Some((directory.store.clone(), "opened".into())),
+            true,
+        );
+        directory.bind("opened".into(), device.clone(), client);
+        assert_eq!(status("opened"), DeviceStatus::NotConnected);
+
+        // Starting is an attempt: Connecting, then Direct once the loopback
+        // stream opens, before any business read has succeeded.
+        device.start();
+        assert_eq!(device.snapshot().status, DeviceStatus::Connecting);
+        eventually("stream opened", || status("opened") == DeviceStatus::Direct).await;
+        assert_eq!(device.snapshot().online, None);
+        assert_eq!(device.snapshot().status, status("opened"));
+
+        // Route changes republish the shared status: relay, then an upgrade to direct.
+        device.commit_for_test(|state| {
+            state.route = ConnectionRoute {
+                scope: ConnectionScope::Public,
+                direct: false,
+            }
+        });
+        eventually("relay route", || status("opened") == DeviceStatus::Relay).await;
+        device.commit_for_test(|state| {
+            state.route = ConnectionRoute {
+                scope: ConnectionScope::Public,
+                direct: true,
+            }
+        });
+        eventually("direct upgrade", || {
+            status("opened") == DeviceStatus::Direct
+        })
+        .await;
+
+        // A dropped stream is Offline while reconnects fail, not Connecting.
+        up.send_replace(false);
+        eventually("stream lost", || status("opened") == DeviceStatus::Offline).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(status("opened"), DeviceStatus::Offline);
+        assert_eq!(device.snapshot().status, DeviceStatus::Offline);
+
+        // Stopping ends the connection: back to an explicit "not connected".
+        device.stop_sync();
+        eventually("stopped", || status("opened") == DeviceStatus::NotConnected).await;
+        for id in ["unopened", remote] {
+            assert_eq!(status(id), DeviceStatus::NotConnected, "{id}");
+        }
+        server.abort();
+    }
 
     #[tokio::test]
     async fn replacing_connection_rejects_late_metadata_and_reuses_unchanged_binding() {

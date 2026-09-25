@@ -8,6 +8,10 @@ use std::sync::Arc;
 pub struct MeshSettings {
     pub enrollment_only: bool,
     source: Arc<MeshAdmin>,
+    /// Supplies this client's status for members that are saved devices.
+    directory: Arc<zork_client_core::desktop::directory::Directory>,
+    /// The station whose Mesh membership this page lists.
+    node: String,
     updates: Option<gpui::Task<()>>,
     saved: u64,
     config: Option<crate::api::MeshConfig>,
@@ -26,7 +30,12 @@ pub struct MeshSettings {
     switch_focus: [gpui::FocusHandle; 2],
 }
 impl MeshSettings {
-    pub fn new(source: Arc<MeshAdmin>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        source: Arc<MeshAdmin>,
+        directory: Arc<zork_client_core::desktop::directory::Directory>,
+        node: String,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut field = |label| {
             let e = cx.new(|cx| ComposerInput::new(label, cx));
             cx.observe(&e, |_, _, cx| cx.notify()).detach();
@@ -38,6 +47,8 @@ impl MeshSettings {
         let mut v = Self {
             enrollment_only: false,
             source,
+            directory,
+            node,
             updates: None,
             saved: 0,
             config: None,
@@ -210,6 +221,11 @@ impl Render for MeshSettings {
             .into_any_element();
         }
         let data = zork_ui::network::NetworkData {
+            station: self
+                .directory
+                .node(&self.node)
+                .map(|node| node.name)
+                .unwrap_or_default(),
             enabled: self.config.as_ref().is_some_and(|c| c.enabled),
             available: self.config.is_some(),
             busy: self.busy,
@@ -228,7 +244,8 @@ impl Render for MeshSettings {
                         .map(|peer| zork_ui::network::Peer {
                             id: peer.origin.clone(),
                             name: peer.name.clone(),
-                            status: self.source.peer_status(&peer.origin),
+                            status: self.directory.device_status_for_origin(&peer.origin),
+                            linked: self.source.peer_online(&peer.origin),
                             permission: if peer.collaborate {
                                 "同一 mesh · 任务协作已开启"
                             } else if peer.client {

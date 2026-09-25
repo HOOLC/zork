@@ -85,6 +85,7 @@ pub fn state_label(state: &str) -> String {
         "direct" => "直连",
         "relay" => "中继",
         "connecting" => "连接中",
+        "not-connected" => "未连接",
         "stopping" => "停止中",
         "revoked" => "访问已撤销",
         "loading" => "加载中",

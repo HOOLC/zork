@@ -52,6 +52,8 @@ pub struct DeviceData {
     pub online: Option<bool>,
     pub status: zork_client_types::device::DeviceStatus,
     pub mesh_readiness: Option<zork_client_types::device::MeshReadiness>,
+    /// This client's own event connection; `status` is projected from it.
+    pub link: crate::device_status::Link,
     pub route: crate::api::ConnectionRoute,
     pub revoked: bool,
     pub connection_error: Option<String>,
@@ -74,21 +76,6 @@ pub struct DeviceData {
     pub mesh: Arc<MeshStatus>,
     pub read_markers: Arc<Vec<ConversationReadMarker>>,
     revisions: [u64; 8],
-}
-
-impl DeviceData {
-    pub fn peer_status(&self, origin: &str) -> zork_client_types::device::DeviceStatus {
-        crate::device_status::project(
-            self.mesh_readiness.as_ref(),
-            self.mesh
-                .peers
-                .iter()
-                .find(|peer| peer.origin == origin)
-                .map(|peer| peer.online),
-            &Default::default(),
-            false,
-        )
-    }
 }
 
 pub struct DeviceUpdate {
@@ -431,6 +418,7 @@ impl Device {
         }
         self.commit(|s| {
             s.online = None;
+            s.link = crate::device_status::Link::Idle;
             s.route = Default::default();
             s.confirmed_at_ms = None;
         });
@@ -479,6 +467,8 @@ impl Device {
                 }
             }
         }));
+        // The status shows Connecting only from here until the first outcome.
+        self.commit(|s| s.link = crate::device_status::Link::Connecting);
         let weak = Arc::downgrade(self);
         let client = self.client.clone();
         *task = Some(self.client.spawn(async move {
@@ -512,7 +502,10 @@ impl Device {
                 match event {
                     LiveEvent::Connected => {
                         previous = None;
-                        device.commit(|state| state.route = Default::default());
+                        device.commit(|state| {
+                            state.link = crate::device_status::Link::Connected;
+                            state.route = Default::default();
+                        });
                     }
                     LiveEvent::Route(route) => device.commit(|state| state.route = route),
                     LiveEvent::Disconnected { error, revoked } => {
@@ -521,6 +514,7 @@ impl Device {
                         retry_at = None;
                         device.commit(|state| {
                             state.online = Some(false);
+                            state.link = crate::device_status::Link::Lost;
                             state.route = Default::default();
                             state.revoked = revoked;
                             state.connection_error = Some(error);
@@ -616,6 +610,10 @@ impl Device {
             }
         }
     }
+    #[cfg(test)]
+    pub(crate) fn commit_for_test(&self, change: impl FnOnce(&mut DeviceData)) {
+        self.commit(change)
+    }
     pub(super) fn commit(&self, change: impl FnOnce(&mut DeviceData)) {
         let mut owned = self.owned.lock().unwrap();
         let before = owned.data.clone();
@@ -623,6 +621,7 @@ impl Device {
         let after = &mut owned.data;
         after.status = crate::device_status::project(
             after.mesh_readiness.as_ref(),
+            after.link,
             after.online,
             &after.route,
             after.revoked,
@@ -644,6 +643,7 @@ impl Device {
                 after.confirmed_at_ms,
             ) || before.status != after.status
                 || before.mesh_readiness != after.mesh_readiness
+                || before.link != after.link
                 || before.route != after.route
                 || before.info != after.info
                 || before.metadata_loaded != after.metadata_loaded,

@@ -1,4 +1,4 @@
 <!-- Generated from crates/zork-ui/assets/icons/edit.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-  <path android:pathData="m15.5 4.5 4 4M4 20l4.5-1L20 7.5a2.8 2.8 0 0 0-4-4L4.5 15 4 20Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="m14.5 4.5 5 5M4 20l4.8-1 11-11a3.5 3.5 0 0 0-5-5l-11 11L3 19c-.2.8.2 1.2 1 1Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>
