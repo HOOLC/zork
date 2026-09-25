@@ -86,7 +86,11 @@ def build(repo, store, kind='node', profile='dev', services=None, channel='test'
     target = base / 'isolated/deployment'
     env['CARGO_TARGET_DIR'] = str(target.resolve())
     with exclusive(target.parent / 'deployment-capture.lock'):
-        prepare_target(repo, target, env)
+        try:
+            prepare_target(repo, target, env)
+        except subprocess.CalledProcessError as error:
+            # An unreadable manifest is a failed build, not an updater crash.
+            raise RuntimeError(f'Cargo build failed; running deployment unchanged: {error}') from error
         return _build(repo, store, kind, profile, services, env, channel)
 
 

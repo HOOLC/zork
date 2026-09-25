@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / 'scripts/lib'))
 from channels import CHANNELS, app_name
 from deployment import atomic_json, digest, exclusive, TOOL_FILES
 from deployment_build import build, stability
+import deployment_retention as retention
 
 
 def recovery_module():
@@ -36,12 +37,19 @@ def main():
     mode.add_argument('--promote', action='store_true', help='Observe MBA dev and prepare its same-code release candidate')
     parser.add_argument('--switch', action='store_true', help='With --promote, also install the accepted release candidate')
     parser.add_argument('--root', type=Path, default=Path.home() / 'Zork', help='Local build store and receipt directory')
-    parser.add_argument('--profile', required=True)
-    parser.add_argument('--model', required=True)
+    mode.add_argument('--prune', action='store_true',
+                      help="Run store retention on the destination's ~/Zork (dry-run unless --apply); do not install")
+    parser.add_argument('--apply', action='store_true', help='With --prune, delete the planned entries')
+    parser.add_argument('--profile')
+    parser.add_argument('--model')
     parser.add_argument('--thinking', default='off')
     args = parser.parse_args()
     if args.host.startswith('-'):
         parser.error('Invalid SSH destination')
+    if args.apply and not args.prune:
+        parser.error('--apply is only used with --prune')
+    if not args.prune and not (args.profile and args.model):
+        parser.error('--profile and --model are required')
     if args.channel == 'release' and not args.candidate and not args.promote:
         parser.error('release requires an observed promoted candidate; it is never rebuilt during installation')
     if args.switch and not args.promote:
@@ -53,12 +61,20 @@ def main():
     if args.control:
         ssh += ['-S', args.control]
     ssh += [args.host]
+    if args.prune:
+        # Standalone stdlib module: runs with the destination's system python.
+        with (ROOT / 'scripts/lib/deployment_retention.py').open('rb') as source:
+            subprocess.run(ssh + ['python3 - ' + ('--apply' if args.apply else '')], stdin=source, check=True)
+        return
     identity = subprocess.check_output(ssh + ['hostname'], text=True).strip()
     if not identity or any(c in identity for c in ('/', '\\', '\n')):
         raise RuntimeError('Invalid remote hostname')
     receipts = root / 'devices' / identity
     with exclusive(root / 'deployment.lock'), tempfile.TemporaryDirectory(prefix='zork-install-') as scratch:
         scratch = Path(scratch)
+        if not args.observe:
+            # Candidates built or promoted here must never land where Spotlight registers them.
+            retention.ensure_noindex_layout(root)
         remote = None
         try:
             if args.observe or args.promote or args.channel == 'release':
@@ -114,7 +130,9 @@ def main():
             with tarfile.open(tools_archive, 'w:gz') as package:
                 for name in TOOL_FILES:
                     package.add(ROOT / 'scripts' / name, arcname='tools/scripts/' + name)
-            remote = subprocess.check_output(ssh + ['mkdir -p "$HOME/Zork" && mktemp -d "$HOME/Zork/.install-XXXXXXXX"'], text=True).strip()
+            # *.noindex: Spotlight must not register the extracted app while it is validated.
+            remote = subprocess.check_output(ssh + ['mkdir -p "$HOME/Zork/staging.noindex" && '
+                                                    'mktemp -d "$HOME/Zork/staging.noindex/install-XXXXXXXX"'], text=True).strip()
             if not remote or '\n' in remote:
                 raise RuntimeError('Invalid remote staging directory')
             for local in (archive, tools_archive):
@@ -128,12 +146,23 @@ def main():
             if result['record'] != record:
                 raise RuntimeError('Installed receipt is for another candidate')
             result['host'] = identity
-            atomic_json(receipts / (args.channel + '-active.json'), result)
+            active_receipt = receipts / (args.channel + '-active.json')
+            if active_receipt.exists():
+                try:
+                    replaced = json.loads(active_receipt.read_text())
+                except ValueError:
+                    replaced = None
+                if replaced and replaced.get('record', {}).get('id') != record['id']:
+                    # Retention keeps this build for rollback on the destination.
+                    atomic_json(receipts / (args.channel + '-previous.json'), replaced)
+            atomic_json(active_receipt, result)
             if args.channel == 'dev':
                 path = receipts / 'app-observations.json'
                 events = json.loads(path.read_text()) if path.exists() else []
                 events.append({'at': result['accepted_at'], 'candidate': record['id'], 'passed': True, 'health': result['health']})
                 atomic_json(path, events)
+            # The destination pruned its own store after accepting; prune the build store too.
+            retention.after_accept(root)
             print(json.dumps({'host': identity, 'candidate': record['id'], 'receipt': str(receipts / (args.channel + '-active.json')),
                               'recovery': shlex.join(result['recovery_argv'])}, ensure_ascii=False, indent=2))
         finally:
