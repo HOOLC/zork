@@ -59,54 +59,92 @@ fn run(lines: &[TranscriptLine], options: &PresentOptions) -> TranscriptPresenta
     present(lines.iter().map(PresentRow::from), options)
 }
 
-#[test]
-fn preferred_slots_match_the_prototype() {
-    // Vectors computed with the prototype's JavaScript `tintSlots`.
-    for (id, slot) in [
-        ("planner", 4),
-        ("builder", 1),
-        ("review", 3),
-        ("tester", 3),
-        ("docs", 0),
-        ("ops", 3),
-        ("design", 0),
-        ("审阅助手", 4),
-        ("key:abc/worker", 2),
-    ] {
-        assert_eq!(preferred_slot(id), slot, "{id}");
+/// Each agent's tint in a presentation, from every place it appears.
+fn presented_tints(shown: &TranscriptPresentation) -> HashMap<String, usize> {
+    let mut tints = HashMap::new();
+    for row in &shown.rows {
+        let authors = row
+            .identity
+            .iter()
+            .map(|identity| &identity.author)
+            .chain(row.reply.iter().filter_map(|reply| reply.target.as_ref()))
+            .chain(
+                row.comments
+                    .iter()
+                    .flat_map(|c| c.pairs.iter().map(|p| &p.source)),
+            );
+        for author in authors {
+            if let (Some(id), Some(tint)) = (&author.agent_id, author.tint) {
+                let known = tints.insert(id.clone(), tint);
+                assert!(
+                    known.is_none_or(|known| known == tint),
+                    "{id} has two tints"
+                );
+            }
+        }
     }
+    tints
 }
 
 #[test]
-fn tint_collisions_take_the_next_free_slot_in_first_appearance_order() {
-    let three = TintSlots::assign(["planner", "builder", "review"]);
-    assert_eq!(
-        three.entries(),
-        [
-            ("planner".into(), 4),
-            ("builder".into(), 1),
-            ("review".into(), 3)
-        ]
-    );
-    let seven = TintSlots::assign([
-        "planner", "builder", "review", "tester", "docs", "ops", "design", "planner",
-    ]);
-    let slots: Vec<usize> = seven.entries().iter().map(|(_, slot)| *slot).collect();
-    // tester prefers 3 (taken) → 4 (taken) → 0; docs prefers 0 → 1 → 2; the
-    // sixth and seventh keep their preference once all five are used.
-    assert_eq!(slots, [4, 1, 3, 0, 2, 3, 0]);
-    let mut first_five = slots[..5].to_vec();
-    first_five.sort();
-    assert_eq!(first_five, [0, 1, 2, 3, 4]);
-    // Order matters: the first agent always keeps its preferred slot.
-    let reordered = TintSlots::assign([
-        "docs", "ops", "design", "planner", "builder", "review", "tester",
-    ]);
-    let slots: Vec<usize> = reordered.entries().iter().map(|(_, slot)| *slot).collect();
-    assert_eq!(slots, [0, 3, 1, 4, 2, 3, 3]);
-    // An agent not in the Chat uses its preferred slot.
-    assert_eq!(three.slot("docs"), 0);
-    assert_eq!(three.slot("review"), 3);
+fn tints_depend_only_on_the_agent_id() {
+    // tester and review share slot 3 and planner has 4; the old
+    // first-appearance assignment moved review and planner to make room.
+    let window = vec![
+        agent("tester", "Tester", 4, "测试通过"),
+        reply(agent("review", "Review", 3, "看过了"), "tester-4", None),
+        agent("planner", "Planner", 2, "下一步"),
+    ];
+    let shown = presented_tints(&run(&window, &options()));
+    // Loading older rows (other agents first) never moves a loaded agent.
+    let mut full = vec![
+        agent("docs", "Docs", 30, "文档"),
+        agent("design", "Design", 25, "设计"),
+        agent("ops", "Ops", 20, "部署"),
+        agent("builder", "Builder", 10, "构建"),
+    ];
+    full.extend(window.clone());
+    let all = presented_tints(&run(&full, &options()));
+    for id in ["tester", "review", "planner"] {
+        assert_eq!(shown[id], tint_slot(id), "{id}");
+        assert_eq!(all[id], shown[id], "{id} moved as history loaded");
+    }
+    for id in ["docs", "design", "ops", "builder"] {
+        assert_eq!(all[id], tint_slot(id), "{id}");
+    }
+    // Shared slots are accepted: review, tester and ops all keep 3.
+    assert_eq!((all["review"], all["tester"], all["ops"]), (3, 3, 3));
+    // Order does not matter either.
+    let mut reversed = full.clone();
+    reversed.reverse();
+    assert_eq!(presented_tints(&run(&reversed, &options())), all);
+    // The chat-list stack agrees with the transcript whatever the other agents.
+    use zork_client_types::chat::ChatAgent;
+    let chat = |ids: &[&str]| {
+        let agents: Vec<ChatAgent> = ids
+            .iter()
+            .map(|id| ChatAgent {
+                id: (*id).into(),
+                name: None,
+                model: None,
+            })
+            .collect();
+        chat_avatar(&agents, ids.len() as u64)
+    };
+    for stack in [
+        chat(&["tester", "review", "planner"]),
+        chat(&["planner", "review", "tester"]),
+        chat(&["review", "docs", "tester"]),
+    ] {
+        for avatar in &stack.agents {
+            assert_eq!(
+                avatar.tint,
+                all[avatar.agent_id.as_str()],
+                "{}",
+                avatar.agent_id
+            );
+        }
+    }
 }
 
 #[test]
@@ -331,7 +369,7 @@ fn reply_lines_resolve_targets_quotes_and_missing_originals() {
         (target.name.as_str(), target.initial.as_deref()),
         ("审阅助手", Some("审"))
     );
-    assert_eq!(target.tint, Some(shown.tints.slot("review")));
+    assert_eq!(target.tint, Some(tint_slot("review")));
     assert_eq!(line.content.as_ref().unwrap().source, QuoteSource::Summary);
     // A reply to the user's short message quotes it verbatim; the user has no disc.
     let line = shown.rows[3].reply.as_ref().unwrap();
@@ -426,13 +464,13 @@ fn comment_batches_become_pairs_with_resolved_sources() {
         (first.state, first.source_index),
         (TargetState::Linked, Some(0))
     );
-    assert_eq!(first.source.tint, Some(shown.tints.slot("planner")));
+    assert_eq!(first.source.tint, Some(tint_slot("planner")));
     assert_eq!(first.pair.quote, "错误提示贴在对应字段下方");
     assert_eq!(first.pair.reply, "这条保留");
     let second = &view.pairs[1];
     assert_eq!(second.state, TargetState::NotLoaded);
     assert_eq!(second.source.name, "审阅助手");
-    assert_eq!(second.source.tint, Some(preferred_slot("review")));
+    assert_eq!(second.source.tint, Some(tint_slot("review")));
     let legacy = &view.pairs[2];
     assert_eq!(legacy.state, TargetState::Deleted);
     assert_eq!(
@@ -631,9 +669,9 @@ fn chat_avatars_stack_three_then_count_the_rest() {
     let one = chat_avatar(&[agent("planner", Some("gpt-6-astra"))], 1);
     assert_eq!(one.agents.len(), 1);
     assert_eq!(one.agents[0].maker.as_deref(), Some("openai"));
-    assert_eq!(one.agents[0].tint, preferred_slot("planner"));
+    assert_eq!(one.agents[0].tint, tint_slot("planner"));
     assert_eq!(one.more, 0);
-    // Three fit; tints follow first appearance and never collide.
+    // Three fit; each tint is the Agent's own slot.
     let three = chat_avatar(
         &[
             agent("planner", Some("gpt-6-astra")),

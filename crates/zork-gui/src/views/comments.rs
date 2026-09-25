@@ -212,7 +212,8 @@ impl RootView {
     }
 
     /// The source author as the transcript shows it: the agent's disc and
-    /// name from core's presentation, else the recorded name.
+    /// name from core's presentation, else the recorded name with a disc in
+    /// the agent's own tint (the same slot it has everywhere).
     fn draft_author(&self, comment: &DraftComment) -> QuoteAuthor {
         let presented = &self.multi_agent.presented;
         let source_row = comment
@@ -241,13 +242,22 @@ impl RootView {
                     && identity.author.agent_id == comment.source.author_agent_id
             })
             .map(|identity| identity.author.quote_author())
-            .unwrap_or_else(|| QuoteAuthor {
-                name: comment
+            .unwrap_or_else(|| {
+                let name = comment
                     .source
                     .author
                     .clone()
-                    .unwrap_or_else(|| "消息".into()),
-                disc: None,
+                    .unwrap_or_else(|| "消息".into());
+                QuoteAuthor {
+                    disc: comment.source.author_agent_id.as_deref().map(|agent| {
+                        zork_ui::components::message_row::Disc {
+                            tint: zork_ui::design::agent_tint_slot(agent),
+                            maker: None,
+                            initial: zork_client_core::message_presentation::initial(&name),
+                        }
+                    }),
+                    name,
+                }
             })
     }
 

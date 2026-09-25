@@ -43,7 +43,8 @@ import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicLong
 
 /** Agent identity tints and the jump wash, the same values as
- * `zork_ui::design::AGENT_TINTS` / `JUMP_WASH` (slots come from core). */
+ * `zork_ui::design::AGENT_TINTS` / `JUMP_WASH`. Slots come from core
+ * (`agent_tint::slot`, per agent id); never assign them here. */
 internal object AgentTints {
     private val light = listOf(0xFFDFE3FA to 0xFF33429A, 0xFFEDE6C4 to 0xFF5A4E0B, 0xFFECE2F8 to 0xFF603B91,
         0xFFDCEBD5 to 0xFF35602A, 0xFFE6E3DD to 0xFF3A3D42)

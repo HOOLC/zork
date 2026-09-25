@@ -672,6 +672,21 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_agentTint<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        agent_id: JString<'a>,
+    ) -> jni::sys::jint {
+        env.with_env(|_| -> Result<_, jni::errors::Error> {
+            Ok(
+                zork_client_core::message_presentation::tint_slot(&agent_id.to_string())
+                    as jni::sys::jint,
+            )
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "system" fn Java_ing_zork_android_NativeBridge_copyableModel<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,

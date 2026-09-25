@@ -657,7 +657,10 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                     val composerLimit = (availableHeight - 40.dp).coerceAtLeast(100.dp)
                     val draftAuthor = { comment: DraftCommentUi ->
                         comment.messageId?.let { transcript?.get(it)?.author }
-                            ?: AuthorUi(comment.author.ifBlank { "消息" }, comment.authorAgentId == null, comment.authorAgentId, null, null, null)
+                            ?: comment.author.ifBlank { "消息" }.let { name ->
+                                AuthorUi(name, comment.authorAgentId == null, comment.authorAgentId,
+                                    comment.authorAgentId?.let(NativeBridge::agentTint), comment.authorAgentId?.let { name.trim().take(1).uppercase() }, null)
+                            }
                     }
                     Composer(state, actions, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), composerLimit, draftAuthor) { actions.send() }
                 }
