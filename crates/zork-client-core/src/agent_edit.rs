@@ -160,6 +160,7 @@ pub fn profile_options(profiles: &[ProfileInfo]) -> Vec<ProfileInfo> {
             billing: None,
             verified: false,
             account_key: None,
+            account_label: None,
             account: Value::Null,
             rate_limits: Value::Null,
             checked_at: None,

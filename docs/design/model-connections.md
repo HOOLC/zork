@@ -16,6 +16,11 @@ Profile 凭据保存在托管节点，Agent 引用身份与模型选择。重命
 <a id="same-account"></a>
 同一账号在多台设备上只显示一次。执行节点为每个 Profile 计算账号标识 `account_key`，随其他 Profile 字段投影给客户端：登录类连接取供应商账号 ID（如 Claude 账号 UUID、ChatGPT 用户与工作区、GitHub 用户 ID、Kimi 用户 ID、xAI 邮箱）的加盐摘要；API Key 连接取 `SHA-256("zork-account-v1\0" + 供应商 + "\0" + Key)` 的前 16 位十六进制（OpenAI 兼容连接同时计入服务地址）。Key 与令牌不离开所在设备，只比较摘要；无法确定身份时不给标识，也不合并。标识只在首次出现时产生一次同步变更。客户端 core 按（供应商，账号标识）合并各设备的行：卡片列出全部设备来源，额度取最新一次成功采样，更新的失败采样也不取代成功值，模型数取各来源的并集；每个设备来源仍独立管理，编辑写回该来源。
 
+<a id="account-label"></a>
+连接以账号命名，Profile 名称可选。执行节点为每个 Profile 计算非机密的账号信息 `account_label`，与 `account_key` 一样随 Profile 投影给客户端：Claude、ChatGPT、xAI 订阅取账号邮箱，GitHub Copilot 取 GitHub 登录名，Kimi 取令牌中的用户名或邮箱，API Key 连接（OpenCode Go、OpenAI API、OpenRouter、DeepSeek、OpenAI 兼容等）取 `···` 加 Key 的末 4 位；Key 短于 12 位或身份未知时不给。Key 最多暴露末 4 位，令牌从不外露。登录信息从已保存的凭据中读取，不为额度采样增加请求；早于此保存的 Claude 与 Copilot 登录只在下一次采样时补查一次（与账号 ID 同一请求），此后不再查询。该字段是由凭据推导的，只在首次出现时产生一次同步变更。
+
+客户端 core 统一决定标题（`connection_title`）：有账号信息时标题即账号信息，API Key 连接写作“接入方式 · ···末4位”（如“OpenCode Go 订阅 · ···a1b2”，沿用目录中的接入方式文案）；账号未知时退回接入方式，标题不为空。同一账号的合并卡片取第一个带账号信息的来源作标题，各处一致。Profile 名称只在用户明确设置时显示，排在账号信息之后并弱化；未命名用名称字段缺省表示。新建时名称可留空，此时 ID 按原有规则由供应商 ID 生成并在本设备内编号去重（`opencode-go`、`opencode-go-2`…）；清空名称即恢复未命名。旧版本自动生成的名称（与 Profile ID、供应商 ID、供应商或接入方式文案相同，忽略大小写、空格和标点，如“OpenCode-Go”）视同未命名，不显示。
+
 core 协调可见性、刷新、新鲜度和同 Profile 请求合并，UI 不设置业务轮询。各 Profile 不共用一把网络请求锁，额度失败不丢弃已成功刷新的 OAuth 凭据。供应商接口、采样周期和容量参数由实现及适配测试维护。
 
 <a id="account-pool"></a>

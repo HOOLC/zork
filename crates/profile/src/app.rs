@@ -111,6 +111,10 @@ pub struct ProfileView {
     /// Secret-free identity of the provider account; equal across devices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_key: Option<String>,
+    /// What the account is recognized by: a login's email or user name, or
+    /// `···` and the last four characters of its API key. Never a secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_label: Option<String>,
     pub account: Value,
     #[serde(rename = "rateLimits")]
     pub rate_limits: Value,
@@ -277,7 +281,9 @@ pub fn update_models_checked(
 pub fn update_name(paths: &impl ProfilePaths, profile_id: &str, name: &str) -> Result<ProfileView> {
     let _guard = lock_profile(paths, profile_id)?;
     let mut document = read(paths, profile_id)?;
-    document.name = Some(name.trim().to_owned());
+    // A name is optional; clearing it leaves the connection unnamed.
+    let name = name.trim();
+    document.name = (!name.is_empty()).then(|| name.to_owned());
     write_unlocked(paths, profile_id, &document)?;
     Ok(view(profile_id, &document))
 }
@@ -452,6 +458,11 @@ pub fn view(profile_id: &str, document: &ProfileDocument) -> ProfileView {
             document.base_url.as_deref(),
             &document.auth,
         ),
+        account_label: providers::account_label(
+            &document.provider,
+            &document.billing,
+            &document.auth,
+        ),
         account: json!({ "ok": false, "error": "not_probed" }),
         rate_limits: json!({ "ok": false, "error": "not_probed" }),
         checked_at: None,
@@ -532,6 +543,23 @@ mod tests {
         assert!(update_models(&paths, "manual.profile", invalid).is_err());
         assert_eq!(read(&paths, "manual.profile").unwrap(), stored);
         assert!(update_models(&paths, "missing", vec![]).is_err());
+    }
+
+    #[test]
+    fn public_view_labels_the_account_with_only_the_key_tail() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = DataRootPaths {
+            data_root: root.path().to_owned(),
+        };
+        let mut document = fixture();
+        document["auth"]["key"] = json!("sk-live-9f8e7d6c5b4aZ9y8");
+        let public = put(&paths, "labeled", document).unwrap();
+        assert_eq!(public.account_label.as_deref(), Some("···Z9y8"));
+        let text = serde_json::to_string(&public).unwrap();
+        assert!(text.contains("\"account_label\":\"···Z9y8\""));
+        assert!(!text.contains("4aZ9y8") && !text.contains("sk-live"));
+        // The label is derived, so an unchanged profile keeps an unchanged view.
+        assert_eq!(get(&paths, "labeled").unwrap().unwrap(), public);
     }
 
     #[test]
@@ -976,10 +1004,17 @@ mod tests {
         assert_eq!(saved.auth, original.auth);
         assert_eq!(saved.models, original.models);
         assert_eq!(list(&paths).unwrap().len(), 1);
-        for invalid in [" ", "bad\nname", &"x".repeat(101)] {
+        for invalid in ["bad\nname", &"x".repeat(101)] {
             assert!(update_name(&paths, "fixture", invalid).is_err());
             assert_eq!(read(&paths, "fixture").unwrap(), saved);
         }
+        // Clearing the name makes the connection unnamed again.
+        let cleared = update_name(&paths, "fixture", "  ").unwrap();
+        assert_eq!(cleared.name, None);
+        assert_eq!(read(&paths, "fixture").unwrap().name, None);
+        assert!(!serde_json::to_string(&read(&paths, "fixture").unwrap())
+            .unwrap()
+            .contains("\"name\""));
         assert!(update_name(&paths, "missing", "new name").is_err());
     }
 }

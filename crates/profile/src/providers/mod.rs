@@ -137,6 +137,11 @@ pub trait AuthProvider: Send + Sync {
     fn account_identity(&self, _billing: &str, _auth: &Value) -> Option<String> {
         None
     }
+    /// A readable, non-secret name for the signed-in account (email or login),
+    /// read from stored credentials without network I/O.
+    fn account_label(&self, _billing: &str, _auth: &Value) -> Option<String> {
+        None
+    }
 }
 
 static DEEPSEEK: DeepSeek = DeepSeek;
@@ -231,6 +236,34 @@ pub fn account_key(
         "{provider_id}:k:{}",
         fingerprint(provider_id, &material)
     ))
+}
+
+/// What a person recognizes the account by, safe to show on every device: a
+/// login's email or user name, or `···` plus the last four characters of an API
+/// key. Never more of a key than that; `None` when unknown.
+pub fn account_label(provider_id: &str, billing: &str, auth: &Value) -> Option<String> {
+    let provider = get(provider_id).ok()?;
+    if let Some(label) = provider.account_label(billing, auth) {
+        return Some(label);
+    }
+    if auth.get("type").and_then(Value::as_str) == Some("oauth") {
+        return None;
+    }
+    key_tail(&nonempty(auth.get("key"))?)
+}
+
+/// `···` and the last four characters; keys too short to hide stay unlabeled.
+pub(crate) fn key_tail(key: &str) -> Option<String> {
+    let chars: Vec<char> = key.trim().chars().collect();
+    if chars.len() < 12 {
+        return None;
+    }
+    Some(format!("···{}", chars[chars.len() - 4..].iter().collect::<String>()))
+}
+
+/// A claim that reads as an account name (email first), for labels only.
+pub(crate) fn claim_label(claims: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| nonempty(claims.get(*key)))
 }
 
 fn fingerprint(provider_id: &str, material: &str) -> String {
@@ -377,6 +410,75 @@ mod tests {
                 None,
                 &json!({"type":"oauth","access":"b","githubUserId":"42"})
             )
+        );
+    }
+
+    #[test]
+    fn api_key_labels_show_at_most_the_last_four_characters() {
+        let key = "sk-opencode-0123456789a1b2";
+        let label =
+            account_label("opencode-go", "subscription", &json!({"type":"api_key","key":key}))
+                .unwrap();
+        assert_eq!(label, "···a1b2");
+        assert_eq!(label.chars().filter(|c| *c != '·').count(), 4);
+        for provider in ["openai", "openrouter", "deepseek", "openai-compatible", "anthropic"] {
+            let label =
+                account_label(provider, "usage", &json!({"type":"api_key","key":key})).unwrap();
+            assert!(!label.contains("0123") && label.ends_with("a1b2"), "{provider}");
+        }
+        // Short keys would be mostly revealed, so they get no label.
+        assert_eq!(
+            account_label("deepseek", "usage", &json!({"type":"api_key","key":"abc12345"})),
+            None
+        );
+        assert_eq!(account_label("deepseek", "usage", &json!({})), None);
+        assert_eq!(account_label("missing", "usage", &json!({"key": key})), None);
+        // A login without a readable name stays unlabeled, never a token tail.
+        assert_eq!(
+            account_label(
+                "anthropic",
+                "subscription",
+                &json!({"type":"oauth","access":"access-token-value","refresh":"r"})
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn logins_are_labeled_by_email_or_login() {
+        let oauth = |extra: Value| {
+            let mut auth = json!({"type":"oauth","access":"a","refresh":"r"});
+            auth.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            auth
+        };
+        assert_eq!(
+            account_label("anthropic", "subscription", &oauth(json!({"email":"me@example.test"}))),
+            Some("me@example.test".into())
+        );
+        assert_eq!(
+            account_label("xai", "subscription", &oauth(json!({"email":"grok@example.test"}))),
+            Some("grok@example.test".into())
+        );
+        assert_eq!(
+            account_label("github-copilot", "subscription", &oauth(json!({"githubLogin":"octocat"}))),
+            Some("octocat".into())
+        );
+        let jwt = |claims: Value| {
+            let encode =
+                |value: &Value| super::anthropic::base64url_nopad(&serde_json::to_vec(value).unwrap());
+            format!("{}.{}.sig", encode(&json!({"alg":"none"})), encode(&claims))
+        };
+        let chatgpt = jwt(json!({"https://api.openai.com/profile":{"email":"gpt@example.test"}}));
+        assert_eq!(
+            account_label("openai", "subscription", &oauth(json!({"access": chatgpt}))),
+            Some("gpt@example.test".into())
+        );
+        let kimi = jwt(json!({"user_id":"u1","username":"moon"}));
+        assert_eq!(
+            account_label("kimi-coding", "subscription", &oauth(json!({"access": kimi}))),
+            Some("moon".into())
         );
     }
 

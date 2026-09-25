@@ -180,8 +180,10 @@ class SettingsParityTest {
             scenario.onActivity { assertEquals("discover_models", it.lastAction) }
             click("更多"); click("刷新额度")
             scenario.onActivity { assertEquals("refresh_quota", it.lastAction) }
-            click("更多"); click("重命名"); field("名称", "手机可见的工作室账号"); click("保存")
-            await("手机可见的工作室账号")
+            // The account titles the page; the name the user set follows it.
+            await("studio@example.test")
+            click("更多"); click("重命名"); field("名称（可选）", "手机可见的工作室账号"); click("保存")
+            await("手机可见的工作室账号"); await("studio@example.test")
             scenario.onActivity {
                 assertEquals("rename_profile", it.lastAction)
                 assertEquals("手机可见的工作室账号", it.lastBody!!.getString("name"))
@@ -260,14 +262,20 @@ class SettingsParityTest {
             assertNull(find("已验证")); assertNotNull(await("待验证")); assertNotNull(await("验证失败"))
             capture("model-connections")
             // One OpenCode Go key saved on both devices is one card naming both.
-            assertEquals(1, nodes().count { it.contentDescription?.toString() == "OpenCode-Go，订阅，mini1、mini2" })
-            click("OpenCode-Go，订阅，mini1、mini2"); await("OpenCode-Go · 选择设备")
+            // Titled by the account (access plus key tail); the generated "OpenCode-Go" never shows.
+            val merged = "OpenCode Go 订阅 · ···a1b2，订阅，mini1、mini2"
+            assertEquals(1, nodes().count { it.contentDescription?.toString() == merged })
+            assertNull(nodes().firstOrNull { it.isVisibleToUser && (it.text ?: it.contentDescription)?.toString()?.contains("OpenCode-Go") == true })
+            assertNotNull(await("1 个账号"))
+            assertEquals(1, nodes().count { it.contentDescription?.toString() == "OpenRouter · ···r0ut，API Key，mini2" })
+            click(merged); await("OpenCode Go 订阅 · ···a1b2 · 选择设备")
             capture("model-connections-merged-sources")
             click("mini2")
             scenario.onActivity { assertEquals("open-connection:go-mini2", it.lastAction) }
             await("额度")
             click("返回"); await("OpenRouter")
-            click("工作室订阅，订阅，mini1")
+            // A name the user set follows the account, muted.
+            click("studio@example.test · 工作室订阅，订阅，mini1")
             scenario.onActivity { assertEquals("open-connection:studio", it.lastAction) }
             await("额度")
             click("返回"); await("OpenRouter")
@@ -361,10 +369,10 @@ class SettingsParityTest {
 
     @Test fun failedRenameKeepsTheDraftForRetry() {
         launch("profile").use { scenario ->
-            settle(); await("工作室订阅"); click("更多"); click("重命名"); await("重命名连接"); field("名称", "重试后的名称")
+            settle(); await("工作室订阅"); click("更多"); click("重命名"); await("重命名连接"); field("名称（可选）", "重试后的名称")
             scenario.onActivity { it.failNextRequest = true }
             click("保存"); await("fixture request failed")
-            assertEquals("重试后的名称", editable("名称")!!.text.toString())
+            assertEquals("重试后的名称", editable("名称（可选）")!!.text.toString())
             click("保存"); await("重试后的名称")
         }
     }

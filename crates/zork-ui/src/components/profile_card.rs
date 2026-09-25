@@ -36,7 +36,10 @@ pub struct Quota {
 pub struct ProfileCard {
     pub key: String,
     pub provider: String,
+    /// The account: its email or login, or the access plus its key tail.
     pub name: String,
+    /// A Profile name the user set, shown after the account, muted.
+    pub custom_name: Option<String>,
     /// Where the connection lives; one account saved on several devices lists each.
     pub devices: Vec<DeviceIdentity>,
     pub billing: String,
@@ -46,7 +49,7 @@ pub struct ProfileCard {
     pub quota: Option<Quota>,
 }
 
-/// One quiet line per connection: name and device first; quota as thin bars;
+/// One quiet line per connection: account and device first; quota as thin bars;
 /// status and billing only matter when something needs fixing.
 pub fn render(
     card: ProfileCard,
@@ -77,16 +80,39 @@ pub fn render(
             .child(provider_icon(&card.provider, 18.))
             .automation(AutomationRole::Status, card.provider.clone()),
     )
-    .child(
+    .child({
+        // An API key's tail identifies the account: only the access before it ellipsizes.
+        let (head, tail) = match card.name.rfind(" · ···") {
+            Some(at) if at > 0 => (card.name[..at].to_owned(), Some(card.name[at..].to_owned())),
+            _ => (card.name.clone(), None),
+        };
         div()
             .id(format!("profile-name-{}", card.key))
-            .min_w_0()
-            .truncate()
+            // The account stays legible however narrow the row gets.
+            .min_w(px(40.))
+            .flex()
+            .items_center()
             .text_size(px(13.))
             .font_weight(gpui::FontWeight::MEDIUM)
-            .child(card.name.clone())
-            .automation(AutomationRole::Status, format!("{} · {}", card.name, card.billing)),
-    )
+            .child(div().min_w_0().truncate().child(head))
+            .when_some(tail, |v, tail| v.child(div().flex_shrink_0().child(tail)))
+            .automation(AutomationRole::Status, format!("{} · {}", card.name, card.billing))
+    })
+    .when_some(card.custom_name.clone(), |v, custom| {
+        v.child(
+            div()
+                .id(format!("profile-custom-name-{}", card.key))
+                // Secondary: gives up width well before the account does.
+                .min_w(px(28.))
+                .flex_shrink(8.)
+                .max_w(px(160.))
+                .truncate()
+                .text_size(px(12.))
+                .text_color(rgb(p.muted))
+                .child(custom.clone())
+                .automation(AutomationRole::Status, custom),
+        )
+    })
     .when(card.devices.len() == 1, |v| {
         let device = card.devices[0].clone();
         v.child(

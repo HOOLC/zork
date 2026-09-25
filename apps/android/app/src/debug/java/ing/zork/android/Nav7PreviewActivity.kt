@@ -91,7 +91,9 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     }
                                     when {
                                     action=="rename_device" -> JSONObject().put("name",body!!.getString("name"))
-                                    action=="rename_profile" -> updateProfile { it.put("name",body!!.getString("name")) }
+                                    // Core retitles: a name the user set shows after the account; an empty one clears it.
+                                    action=="rename_profile" -> updateProfile { val name=body!!.getString("name").trim()
+                                        it.put("name",name.ifBlank{null}).put("custom_name",name.ifBlank{null}) }
                                     action=="enable_model" -> updateProfile { profile ->
                                         profile.optJSONArray("models").objects().find{it.text("id")==body.getString("model")}!!.put("enabled",body!!.getBoolean("enabled"))
                                     }
@@ -211,35 +213,42 @@ private fun fixtureSettings(): MobileSettingsState {
         .put(obj("id" to "unconfigured-model","api" to "openai-responses","enabled" to false,"thinking" to org.json.JSONArray().put("off"),"default_thinking" to "off"))
     val agents=listOf(obj("id" to "product","name" to "产品领队","role" to "leader","avatar" to "fox","profile_id" to "studio","model" to "fixture-model","thinking" to "off"),
         obj("id" to "designer","name" to "设计队员","role" to "worker","avatar" to "cat","profile_id" to "studio","model" to "fixture-model","thinking" to "off","allowed_leaders" to org.json.JSONArray().put("other/leader")))
+    // `title` and `custom_name` are what core derives from `account_label` and the name.
     val lab=obj("profile_id" to "lab","name" to "本地 vLLM","provider" to "openai-compatible","billing" to "usage","verified" to true,
+        "account_label" to "···7f3a","title" to "API · ···7f3a","custom_name" to "本地 vLLM",
         "models" to org.json.JSONArray().put(obj("id" to "qwen3-32b","api" to "openai-completions","enabled" to true,"thinking" to org.json.JSONArray().put("off").put("high"),"default_thinking" to "high",
             "limits" to obj("context_window_tokens" to 128000,"max_output_tokens" to 16000),"capabilities" to obj("input" to org.json.JSONArray().put("text")))))
     val profiles=listOf(obj("profile_id" to "studio","name" to "工作室订阅","provider" to "openai","billing" to "subscription","verified" to true,"models" to models,
+        "account_label" to "studio@example.test","title" to "studio@example.test","custom_name" to "工作室订阅",
         "quota" to obj("failed" to false,"windows" to org.json.JSONArray().put(obj("name" to "","minutes" to 300,"remaining" to 72,"resets_at" to 1789002000)),"balance" to org.json.JSONArray().put(0).put("USD")),"checkedAt" to "2026-09-10T01:00:00Z"),
-        obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray()), lab)
+        obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray(),
+            "account_label" to "···k9x2","title" to "API · ···k9x2","custom_name" to null), lab)
     val providers=listOf(obj("id" to "openai","label" to "OpenAI","billing" to org.json.JSONArray().put(obj("id" to "subscription","label" to "ChatGPT 订阅","deviceCode" to true)).put(obj("id" to "usage","label" to "API","deviceCode" to false))),obj("id" to "anthropic","label" to "Anthropic","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false))),
         obj("id" to "openai-compatible","label" to "OpenAI 兼容","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false,
             "template" to obj("models" to org.json.JSONArray().put(obj("api" to "openai-completions")))))))
-    val failedProfile=obj("profile_id" to "router","name" to "OpenRouter","provider" to "openrouter","billing" to "usage","verified" to false,"verification" to "failed","models" to org.json.JSONArray())
+    val failedProfile=obj("profile_id" to "router","name" to "OpenRouter","provider" to "openrouter","billing" to "usage","verified" to false,"verification" to "failed","models" to org.json.JSONArray(),
+        "account_label" to "···r0ut","title" to "OpenRouter · ···r0ut","custom_name" to null)
     // The same OpenCode Go key on both devices: core shows it once, quota from the fresher sample.
     fun go(id: String, remaining: Int, at: String, models: List<String>) = obj("profile_id" to id,"name" to "OpenCode-Go","provider" to "opencode-go","billing" to "subscription",
         "verified" to true,"verification" to "verified","account_key" to "opencode-go:k:0123456789abcdef","checkedAt" to at,
+        "account_label" to "···a1b2","title" to "OpenCode Go 订阅 · ···a1b2","custom_name" to null,
         "models" to org.json.JSONArray(models.map { obj("id" to it) }),
         "quota" to obj("failed" to false,"windows" to org.json.JSONArray().put(obj("name" to "","minutes" to 300,"remaining" to remaining))))
     val goA=go("OpenCode-Go",64,"2026-09-10T01:00:00Z",listOf("glm-5.1","kimi-k2.6"))
     val goB=go("go-mini2",58,"2026-09-10T01:20:00Z",listOf("glm-5.1","deepseek-flash"))
-    val openCode=obj("id" to "opencode-go","label" to "OpenCode Go")
+    val openCode=obj("id" to "opencode-go","label" to "OpenCode Go","billing" to org.json.JSONArray().put(obj("id" to "subscription","label" to "OpenCode Go 订阅","deviceCode" to false)))
     val mini1Profiles=profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") } + goA
     val connections=listOf(
         obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(mini1Profiles),"providers" to org.json.JSONArray(providers + openCode)),
         obj("peer" to "mini2","name" to "mini2","state" to "failed","error" to "连接超时","cached" to true,"loaded_at_ms" to System.currentTimeMillis() - 12 * 60_000,
             "profiles" to org.json.JSONArray().put(failedProfile).put(goB),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter")).put(openCode)))
     fun source(peer: String, profile: JSONObject) = obj("peer" to peer,"device" to peer,"profile" to profile)
-    fun single(peer: String, profile: JSONObject) = obj("id" to "profile:$peer/${profile.text("profile_id")}","name" to profileName(profile),"provider" to profile.text("provider"),
+    fun single(peer: String, profile: JSONObject) = obj("id" to "profile:$peer/${profile.text("profile_id")}","name" to connectionTitle(profile),
+        "title" to connectionTitle(profile),"custom_name" to customName(profile),"provider" to profile.text("provider"),
         "peer" to peer,"profile" to profile,"models" to (profile.optJSONArray("models")?.length() ?: 0),"sources" to org.json.JSONArray().put(source(peer, profile)))
     // Core's `accounts` for these devices (see zork-client-core model_connections).
     val accounts=mini1Profiles.dropLast(1).map { single("mini1", it) } + single("mini2", failedProfile) +
-        obj("id" to "account:opencode-go:k:0123456789abcdef","name" to "OpenCode-Go","provider" to "opencode-go","peer" to "mini2","profile" to goB,"models" to 3,
+        obj("id" to "account:opencode-go:k:0123456789abcdef","name" to "OpenCode Go 订阅 · ···a1b2","title" to "OpenCode Go 订阅 · ···a1b2","custom_name" to null,"provider" to "opencode-go","peer" to "mini2","profile" to goB,"models" to 3,
             "sources" to org.json.JSONArray().put(source("mini1", goA)).put(source("mini2", goB)))
     return MobileSettingsState(page="device",device=Peer("mini1","B","",machine="工作室的 MacBook Air"),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,accounts=accounts,
         info=obj("name" to "工作室的 MacBook Air","station" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))

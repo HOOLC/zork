@@ -125,6 +125,17 @@ impl AuthProvider for OpenAi {
         Some(format!("{user}/{account}"))
     }
 
+    fn account_label(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        let claims = super::jwt_claims(&nonempty(auth.get("access"))?)?;
+        claims
+            .get("https://api.openai.com/profile")
+            .and_then(|profile| nonempty(profile.get("email")))
+            .or_else(|| nonempty(claims.get("email")))
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")

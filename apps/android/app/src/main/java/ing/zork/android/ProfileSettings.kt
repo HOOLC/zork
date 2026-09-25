@@ -25,6 +25,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 internal fun profileName(profile: JSONObject) = profile.text("name").takeIf { it.isNotBlank() } ?: profile.text("profile_id")
+/** Core's title for a connection: its account (email, login, or access plus key
+ * tail), else its access. Never a generated Profile name. */
+internal fun connectionTitle(profile: JSONObject) = profile.text("title").ifBlank { profileName(profile) }
+/** A Profile name the user set; core drops generated ones. Shown after the title, muted. */
+internal fun customName(profile: JSONObject) = profile.text("custom_name").takeIf { it.isNotBlank() && it != connectionTitle(profile) }
 internal fun compactTokens(value: Long): String = when {
     value >= 1_000_000 && value % 1_000_000 == 0L -> "${value / 1_000_000}M"
     value >= 1000 && value % 1000 == 0L -> "${value / 1000}K"
@@ -264,7 +269,8 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     val provider = state.providers.find { it.text("id") == row.text("provider") }
                     val billing = provider?.optJSONArray("billing").objects().find { it.text("id") == row.text("billing") }
                     Column {
-                        SettingsListRow(profileName(row), subtext = "${provider?.text("label") ?: row.text("provider")} · ${billing?.text("label") ?: row.text("billing")}",
+                        SettingsListRow(connectionTitle(row), subtext = listOfNotNull(customName(row), provider?.text("label") ?: row.text("provider"),
+                                billing?.text("label") ?: row.text("billing")).joinToString(" · "),
                             detail = "${row.optJSONArray("models")?.length() ?: 0} 个模型", leading = { ProviderMark(row.text("provider")) },
                             trailing = { VerificationPill(row) },
                             action = { actions.profile(row) })
@@ -289,7 +295,18 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         ProviderMark(profile.text("provider"), 32)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(profileName(profile), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val (head, tail) = splitKeyTail(connectionTitle(profile))
+                                Row(Modifier.weight(1f, fill = false)) {
+                                    Text(head, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false))
+                                    tail?.let { Text(" · $it", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false) }
+                                }
+                                customName(profile)?.let {
+                                    Text(it, fontSize = 13.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(bottom = 2.dp).widthIn(max = 96.dp))
+                                }
+                            }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("${provider?.text("label") ?: profile.text("provider")} · ${accessLabel(profile)} · 保存在",
                                     fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1)
