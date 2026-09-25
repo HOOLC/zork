@@ -386,6 +386,7 @@ mod tests {
 
     fn saved() -> SavedNode {
         SavedNode {
+            machine_name: None,
             id: "saved".into(),
             name: "Saved device".into(),
             url: "http://127.0.0.1:9".into(),

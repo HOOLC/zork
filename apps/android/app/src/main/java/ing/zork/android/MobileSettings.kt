@@ -174,11 +174,13 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                             DeviceStatusBadge(status)
                             if (status.state in listOf("direct", "connected")) Text(deviceStatusText(status), fontSize = 12.sp, color = ZorkColors.Muted)
                         }
+                        // The name the device registered with stays visible in its details.
+                        device?.machine?.let { Text("机器名称 $it", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                     Box {
                         IconAction(R.drawable.ic_more, "更多", enabled = !state.loading) { more = true }
                         PlainMenu("设备操作", more, { more = false }, 200.dp) {
-                            ZorkMenuItem("重命名", false, enabled = state.online, onClick = { more = false; editor = "rename" })
+                            ZorkMenuItem("修改显示名称", false, enabled = state.online, onClick = { more = false; editor = "rename" })
                             if (update?.optBoolean("supported") == true && state.online && !available)
                                 ZorkMenuItem(if (checking) "正在检查…" else "检查更新", false, enabled = !checking && !upgrading,
                                     onClick = { more = false; actions.checkUpdate() })

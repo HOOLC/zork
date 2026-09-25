@@ -28,6 +28,7 @@ fn sample(start: usize, name: &str, model: &str, state: &str) -> Device {
     Device {
         id: format!("device-{start}"),
         name: name.into(),
+        machine: None,
         online: Some(state != "offline"),
         status: if state == "offline" {
             crate::device_name::DeviceStatus::Offline

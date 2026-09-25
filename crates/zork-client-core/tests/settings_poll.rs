@@ -16,6 +16,7 @@ async fn settings_subscription_notifies_only_committed_versions_and_hides_revoke
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
     store
         .save_node(&SavedNode {
+            machine_name: None,
             id: "peer".into(),
             name: "Peer".into(),
             url: String::new(),

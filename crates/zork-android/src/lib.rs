@@ -159,6 +159,7 @@ mod tests {
         let store = ClientStore::open(root.path()).unwrap();
         store
             .save_node(&SavedNode {
+                machine_name: None,
                 id: "test-peer".into(),
                 name: "fixture".into(),
                 url: String::new(),

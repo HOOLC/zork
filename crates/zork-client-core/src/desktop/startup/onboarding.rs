@@ -226,6 +226,7 @@ mod tests {
         let store = ClientStore::open(root).unwrap();
         store
             .save_node(&SavedNode {
+                machine_name: None,
                 id: "local".into(),
                 name: "Local".into(),
                 url: "http://127.0.0.1:9".into(),

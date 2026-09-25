@@ -34,6 +34,7 @@ fn main() {
     let store = ClientStore::open(dir.path()).unwrap();
     store
         .save_node(&SavedNode {
+            machine_name: None,
             id: "peer".into(),
             name: "Fixture".into(),
             url: String::new(),

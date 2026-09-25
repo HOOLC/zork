@@ -68,7 +68,7 @@ pub fn extend_shell(registry: &Arc<ToolRegistry>, base: &str) -> anyhow::Result<
     };
     contract.version = ToolVersion::new("shell-target-1")?;
     contract.initial_description = "Run a command locally, or on a Mesh node selected by target. Completes through the ordinary tool lifecycle; full output is kept in the invocation live log.".into();
-    contract.detailed_description.push_str(" Optional target is a node identity from device.list; omitted or local uses this Session workspace. Remote cwd must be absolute on the target; omitted remote cwd uses its workspace for this Session. env overrides the command environment. Use wait for completion, tool.cancel for cancellation, and history.list/file.read for results. Do not repeat commands whose effects remain uncertain.");
+    contract.detailed_description.push_str(" Optional target is a node identity from device.list, or its display_name or machine_name; omitted or local uses this Session workspace. Remote cwd must be absolute on the target; omitted remote cwd uses its workspace for this Session. env overrides the command environment. Use wait for completion, tool.cancel for cancellation, and history.list/file.read for results. Do not repeat commands whose effects remain uncertain.");
     contract.input_schema["properties"]["target"] = json!({"type":"string","minLength":1});
     registry.register(Arc::new(
         ToolInstance::new(

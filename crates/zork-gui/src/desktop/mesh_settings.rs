@@ -239,11 +239,19 @@ impl Render for MeshSettings {
                 .config
                 .as_ref()
                 .map(|c| {
+                    let names = self.source.snapshot().device_names();
                     c.peers
                         .iter()
-                        .map(|peer| zork_ui::network::Peer {
+                        .map(|peer| {
+                            let named = names.iter().find(|n| n.origin == peer.origin);
+                            (peer, named)
+                        })
+                        .map(|(peer, named)| zork_ui::network::Peer {
                             id: peer.origin.clone(),
-                            name: peer.name.clone(),
+                            name: named.map_or_else(|| peer.name.clone(), |n| n.display.clone()),
+                            machine: named
+                                .map(|n| n.machine.clone())
+                                .filter(|machine| Some(machine) != named.map(|n| &n.display)),
                             status: self.directory.device_status_for_origin(&peer.origin),
                             linked: self.source.peer_online(&peer.origin),
                             permission: if peer.collaborate {

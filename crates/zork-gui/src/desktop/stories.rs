@@ -481,7 +481,7 @@ fn raw_catalog() -> Vec<Story> {
         (
             "device",
             "设备设置",
-            &["running", "stopped", "loading", "error"][..],
+            &["running", "stopped", "loading", "error", "renaming", "rename-error"][..],
         ),
         ("mesh", "设备连接", &["connected", "empty", "manual"][..]),
         (
@@ -1010,7 +1010,7 @@ impl StoryHost {
                             .trim_end_matches("-compact")
                             .trim_end_matches("-wide")
                             .into(),
-                        zork_client_core::device_edit::validate_name,
+                        zork_client_core::device_edit::validate_story_display_name,
                         cx,
                     )
                 })

@@ -322,6 +322,7 @@ mod tests {
         let origin = station.start_on(&[], Some(&network))?;
         let store = Arc::new(ClientStore::open(&root.path().join("client"))?);
         let local = SavedNode {
+            machine_name: None,
             id: "local".into(),
             name: "local Station".into(),
             url: "http://127.0.0.1:9".into(),
@@ -331,6 +332,7 @@ mod tests {
             group: None,
         };
         let remote_http = SavedNode {
+            machine_name: None,
             id: "remote-http".into(),
             local: false,
             ..local.clone()

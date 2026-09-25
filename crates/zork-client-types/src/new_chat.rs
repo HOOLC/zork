@@ -7,6 +7,10 @@ pub struct OptionItem {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<crate::device::DeviceStatus>,
+    /// For device options: the machine name the device registered with, when
+    /// it differs from the display name in `label`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<String>,
     /// For model options: the connections that offer this model, in list order,
     /// so pickers can group models by connection. Empty for other choices.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

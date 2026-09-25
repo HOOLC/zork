@@ -1292,6 +1292,7 @@ impl Client {
                     .trust(&origin, name, address.as_deref())
                     .await?;
                 self.store.save_node(&SavedNode {
+                    machine_name: None,
                     id: origin.clone(),
                     name: name.into(),
                     url: String::new(),
@@ -1567,6 +1568,7 @@ mod tests {
         client
             .store
             .save_node(&SavedNode {
+                machine_name: None,
                 id: peer.clone(),
                 name: "test".into(),
                 url: String::new(),

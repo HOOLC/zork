@@ -78,7 +78,7 @@ const FILE_LINES: usize = 20;
 mod live;
 pub use live::HistoryChanged;
 mod statistics;
-pub use statistics::{Runtime, Statistics};
+pub use statistics::{Environment, Runtime, Statistics};
 
 #[derive(Clone)]
 pub enum Jump {

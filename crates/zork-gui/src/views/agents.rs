@@ -22,7 +22,7 @@ impl RootView {
     pub(crate) fn attach_navigation(
         &mut self,
         navigation: Entity<crate::desktop::navigation::DeviceNavigation>,
-        name: String,
+        name: zork_ui::device_name::DeviceName,
     ) {
         self.device_navigation = Some(navigation);
         self.device_name = Some(name);

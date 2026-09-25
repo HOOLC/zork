@@ -96,7 +96,7 @@ private fun NewChatDeviceTabs(peers: List<Peer>, current: Peer, enabled: Boolean
             Row(Modifier.height(48.dp)
                 .background(if (selected) ZorkColors.Selected else ZorkColors.Prompt, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                 .selectable(selected, enabled = enabled, role = Role.Tab) { if (!selected) select(peer) }
-                .semantics { contentDescription = deviceNameSummary(peer.name, peer.status) }
+                .semantics { contentDescription = deviceNameSummary(peer.spokenName, peer.status) }
                 .padding(start = 10.dp, end = 14.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DeviceMark(peer.name, 18.dp)

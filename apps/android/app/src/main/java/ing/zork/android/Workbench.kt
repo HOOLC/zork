@@ -220,21 +220,27 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
     }
 }
 
-/** Every device with its status; a chip opens that device's settings. */
+/** Every device with its status; a chip opens that device's settings and a
+ * long press shows the machine name it registered with. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun DeviceStrip(peers: List<Peer>, open: (Peer) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         peers.forEach { peer ->
-            Row(Modifier.height(44.dp).clip(ZorkShapes.Control).background(ZorkColors.Canvas)
-                .border(UiTokens.Border, ZorkColors.Border, ZorkShapes.Control)
-                .zorkPressable { open(peer) }
-                .semantics(mergeDescendants = true) { contentDescription = "${deviceNameSummary(peer.name, peer.status)} · 设备设置" }
-                .padding(start = 10.dp, end = 14.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DeviceMark(peer.name, 20.dp)
-                Text(peer.name, fontSize = 14.sp, color = ZorkColors.Ink, maxLines = 1)
-                DeviceStatusBadge(peer.status)
+            val tip = androidx.compose.material3.rememberTooltipState()
+            val scope = rememberCoroutineScope()
+            MachineNameTooltip(peer.machine, tip) {
+                Row(Modifier.height(44.dp).clip(ZorkShapes.Control).background(ZorkColors.Canvas)
+                    .border(UiTokens.Border, ZorkColors.Border, ZorkShapes.Control)
+                    .zorkPressable(onLongClick = peer.machine?.let { { scope.launch { tip.show() } } }) { open(peer) }
+                    .semantics(mergeDescendants = true) { contentDescription = "${deviceNameSummary(peer.spokenName, peer.status)} · 设备设置" }
+                    .padding(start = 10.dp, end = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DeviceMark(peer.name, 20.dp)
+                    Text(peer.name, fontSize = 14.sp, color = ZorkColors.Ink, maxLines = 1)
+                    DeviceStatusBadge(peer.status)
+                }
             }
         }
     }

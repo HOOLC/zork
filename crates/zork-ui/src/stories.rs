@@ -83,6 +83,8 @@ pub fn catalog() -> Vec<Story> {
                 "stopped",
                 "revoked",
                 "long",
+                "display-name",
+                "machine-hint",
             ][..],
             "crates/zork-ui/src/device_name.rs",
             "status",
@@ -149,7 +151,14 @@ pub fn catalog() -> Vec<Story> {
         (
             "history",
             "执行历史",
-            &["collapsed", "expanded", "narrow", "empty", "error"][..],
+            &[
+                "collapsed",
+                "expanded",
+                "narrow",
+                "empty",
+                "error",
+                "runtime-device",
+            ][..],
             "crates/zork-ui/src/components/history.rs",
             "history",
         ),
@@ -291,6 +300,14 @@ pub fn catalog() -> Vec<Story> {
                 ("profile-card", "hover-5h") => story.actions.push(json!({
                     "type":"move","target":{"element_id":"profile-quota-window-story-card-0"}
                 })),
+                // The runtime device behind 用量 uses the shared device-name component.
+                ("history", "runtime-device") => story.actions.push(click("history-usage-details")),
+                ("device-name", "machine-hint") => {
+                    story.height = 160.;
+                    story.actions.push(json!({
+                        "type":"move","target":{"element_id":"device-name-device-name-example"}
+                    }))
+                }
                 _ => {}
             }
             items.push(story);
@@ -531,7 +548,7 @@ impl Render for PrimitiveStory {
                     "stopping" => DeviceStatus::MeshStopping,
                     "connected" => DeviceStatus::Connected,
                     "revoked" => DeviceStatus::Revoked,
-                    "direct" | "long" => DeviceStatus::Direct,
+                    "direct" | "long" | "display-name" | "machine-hint" => DeviceStatus::Direct,
                     "relay" => DeviceStatus::Relay,
                     "connecting" => DeviceStatus::Connecting,
                     "not-connected" => DeviceStatus::NotConnected,
@@ -539,11 +556,20 @@ impl Render for PrimitiveStory {
                     "failed" => DeviceStatus::MeshFailed("无法恢复 Mesh 连接，请重试".into()),
                     _ => DeviceStatus::MeshStopped,
                 };
-                div().w(px(260.)).child(label(
-                        "device-name-example",
-                    if state == "long" { "设计工作室的 MacBook Air 与远程构建设备" } else { "MacBook Air" },
-                    &status, None,
-                )).into_any_element()
+                // Mesh devices show their short display name; the machine
+                // name they registered with is the hover hint.
+                let name = match state {
+                    "long" => "设计工作室的 MacBook Air 与远程构建设备".into(),
+                    "display-name" | "machine-hint" => crate::device_name::DeviceName::new(
+                        "B",
+                        Some("zuozijians-Mac-Studio".into()),
+                    ),
+                    _ => "MacBook Air".into(),
+                };
+                div()
+                    .w(px(260.))
+                    .child(label("device-name-example", name, &status, None))
+                    .into_any_element()
             }
             "interaction" => div().child(self.extra.clone().unwrap()).into_any_element(),
             "loading" => {

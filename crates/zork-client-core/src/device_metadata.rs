@@ -13,8 +13,8 @@ pub(crate) fn record(
             .filter(|name| !name.trim().is_empty())
         {
             if let Some(mut node) = store.nodes()?.into_iter().find(|n| n.id == peer) {
-                if node.name != name {
-                    node.name = name.into();
+                if node.machine_name.as_deref().unwrap_or(&node.name) != name {
+                    node.set_name(name);
                     store.save_node(&node)?;
                 }
             }
@@ -32,6 +32,10 @@ pub(crate) fn record(
         return Ok(());
     };
     group.validate()?;
+    let names = value["names"]
+        .as_object()
+        .and_then(|_| serde_json::from_value(value["names"].clone()).ok());
+    store.apply_mesh_names(&group, names.as_ref())?;
     if !group.members.iter().any(|m| m.origin == peer) {
         return Ok(());
     }
@@ -49,8 +53,8 @@ pub(crate) fn record(
             .map(|m| m.origin.as_str())
             .unwrap_or(&node.id);
         if let Some(member) = group.members.iter().find(|m| m.origin == origin) {
-            if node.name != member.name {
-                node.name = member.name.clone();
+            if node.machine_name.as_deref().unwrap_or(&node.name) != member.name {
+                node.set_name(member.name.clone());
                 store.save_node(&node)?;
             }
         }
@@ -71,6 +75,7 @@ mod tests {
         let origin = format!("key:{}", "y".repeat(52));
         store
             .save_node(&SavedNode {
+                machine_name: None,
                 id: origin.clone(),
                 name: "old".into(),
                 url: "".into(),
@@ -109,7 +114,11 @@ mod tests {
             &json!({"config":{"group":group}}),
         )
         .unwrap();
-        assert_eq!(store.nodes().unwrap()[0].name, "新名字");
+        // The registered name is kept as the machine name; the Mesh shows the
+        // device by its display name.
+        let listed = store.nodes().unwrap().remove(0);
+        assert_eq!(listed.machine_name.as_deref(), Some("新名字"));
+        assert_eq!(listed.name, "A");
         let mut stale = group.clone();
         stale["revision"] = json!(1);
         stale["members"][0]["name"] = json!("过期名字");
@@ -120,6 +129,22 @@ mod tests {
             &json!({"config":{"group":stale}}),
         )
         .unwrap();
-        assert_eq!(store.nodes().unwrap()[0].name, "新名字");
+        assert_eq!(
+            store.nodes().unwrap()[0].machine_name.as_deref(),
+            Some("新名字")
+        );
+        // Names from the authority arrive beside the group and win.
+        let mut names = zork_config::membership::MeshNames::new(&origin);
+        let parsed: zork_config::membership::MeshGroup =
+            serde_json::from_value(group.clone()).unwrap();
+        names.rename(&parsed, &origin, "工作室").unwrap();
+        record(
+            &store,
+            &origin,
+            "/v1/node/mesh",
+            &json!({"config":{"group":group},"names":names}),
+        )
+        .unwrap();
+        assert_eq!(store.nodes().unwrap()[0].name, "工作室");
     }
 }

@@ -497,6 +497,7 @@ impl Render for DeviceNavigation {
             .map(|device| zork_ui::chat_navigation::Device {
                 id: device.node.id.clone(),
                 name: device.node.name.clone(),
+                machine: device.node.machine_name.clone(),
                 online: device.data.online,
                 status: device.data.status.clone(),
                 direct: device.data.route.direct,

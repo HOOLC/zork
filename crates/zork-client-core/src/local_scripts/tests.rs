@@ -197,6 +197,7 @@ async fn source_cache_replay_and_restart_preserve_code_without_executing_or_crea
     controller
         .store
         .save_node(&SavedNode {
+            machine_name: None,
             id: "node".into(),
             name: "Node".into(),
             url: String::new(),

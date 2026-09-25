@@ -157,7 +157,13 @@ impl Host for Story {
             runtime: Runtime {
                 name: "Studio".into(),
                 role: None,
-                environment: Some("Studio Mac".into()),
+                environment: Some(super::statistics::Environment {
+                    name: crate::device_name::DeviceName::new(
+                        "B",
+                        Some("zuozijians-Mac-Studio".into()),
+                    ),
+                    status: crate::device_name::DeviceStatus::Direct,
+                }),
                 provider: Some("Codex".into()),
                 model: Some("gpt-5.4".into()),
                 ..Default::default()
