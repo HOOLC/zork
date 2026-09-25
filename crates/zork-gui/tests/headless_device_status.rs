@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
     if std::env::args().any(|arg| arg == "--desktop") {
         return desktop(&output);
     }
+    local_device_row(&output)?;
     // A separate process supplies an isolated desktop store before GPUI starts;
     // no live device is restored and no local node is launched.
     let directory = tempfile::tempdir()?;
@@ -40,6 +41,76 @@ fn main() -> anyhow::Result<()> {
         .env("ZORK_GUI_LOCALE", "zh-CN")
         .status()?;
     anyhow::ensure!(status.success(), "desktop device status regression failed");
+    Ok(())
+}
+
+/// The Mesh device list of this machine's own station leads with its own row,
+/// tagged "本机" in words (read out with name and status), with the same
+/// status as elsewhere and no removal action; other rows are untagged.
+fn local_device_row(output: &std::path::Path) -> anyhow::Result<()> {
+    use zork_gui::desktop::stories::{self, StoryHost};
+    let mut cx = HeadlessAppContext::with_platform(
+        gpui_platform::current_platform(true).text_system(),
+        Arc::new(EmbeddedAssets),
+        gpui_platform::current_headless_renderer,
+    );
+    let driver = cx.update(|cx| {
+        zork_gui::assets::init_fonts(cx);
+        zork_gui::components::init(cx);
+        cx.set_reduce_motion(true);
+        HeadlessAutomation::install(cx)
+    });
+    let story = stories::fixture("mesh-connected-wide")
+        .ok_or_else(|| anyhow::anyhow!("no Mesh device list story"))?;
+    let window = cx.open_window(gpui::size(px(1280.), px(800.)), |_, cx| {
+        let host = cx.new(|cx| StoryHost::new(story, cx));
+        cx.new(|_| AutomationRoot::new(host))
+    })?;
+    for _ in 0..4 {
+        cx.advance_clock(Duration::from_millis(16));
+        cx.run_until_parked();
+        cx.update_window(window.into(), |_, w, cx| {
+            w.simulate_next_frame(cx);
+        })?;
+    }
+    let snapshot = driver.snapshot(false);
+    let element = |id: &str| snapshot.elements.iter().find(|e| e.id == id);
+    let rows: Vec<_> = snapshot
+        .elements
+        .iter()
+        .filter(|e| {
+            e.id.starts_with("mesh-peer-")
+                && ![
+                    "mesh-peer-link-",
+                    "mesh-peer-permission-",
+                    "mesh-peer-more-",
+                ]
+                .iter()
+                .any(|prefix| e.id.starts_with(prefix))
+        })
+        .collect();
+    anyhow::ensure!(
+        rows.first().map(|e| (e.id.as_str(), e.label.as_str()))
+            == Some(("mesh-peer-mini1", "A（mini1） · 本机 · 直连")),
+        "this machine must lead, tagged in words: {:?}",
+        rows.iter().map(|e| (&e.id, &e.label)).collect::<Vec<_>>()
+    );
+    anyhow::ensure!(
+        rows.iter().skip(1).all(|e| !e.label.contains("本机")),
+        "only this machine is tagged: {:?}",
+        rows.iter().map(|e| &e.label).collect::<Vec<_>>()
+    );
+    anyhow::ensure!(
+        element("mesh-peer-more-mini1").is_none() && element("mesh-peer-more-mini2").is_some(),
+        "this machine cannot be removed from its own list"
+    );
+    anyhow::ensure!(
+        element("mesh-peer-link-mini1").is_none(),
+        "this machine has no Mesh link to itself"
+    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("mesh-local-device.png"))?;
+    println!("PASS Mesh local device: this machine leads its own list, tagged 本机 in words, without removal");
     Ok(())
 }
 

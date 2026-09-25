@@ -31,6 +31,16 @@ pub struct DirectoryData {
     pub preferences: crate::preferences::ClientPreferences,
     pub applications: Arc<Vec<crate::pages::ApplicationEntry>>,
 }
+impl DirectoryData {
+    /// This machine's Mesh identities: its built-in Station and this client.
+    pub fn local_device(&self) -> crate::local_device::LocalDevice {
+        crate::local_device::LocalDevice::new(
+            &self.nodes,
+            &self.origins,
+            self.mesh_identity.as_deref(),
+        )
+    }
+}
 
 pub struct Directory {
     pub data_reset: Arc<crate::data_reset::Controller>,

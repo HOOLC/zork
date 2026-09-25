@@ -144,6 +144,72 @@ impl MeshSettings {
     }
 }
 impl MeshSettings {
+    /// The listed station's devices. When that station is this machine it
+    /// leads as its own row; any member that is this machine is marked
+    /// "本机" by the core rule (`LocalDevice`) and cannot be removed.
+    fn device_rows(
+        &self,
+        config: &crate::api::MeshConfig,
+        directory: &zork_client_core::desktop::directory::DirectoryData,
+    ) -> Vec<zork_ui::network::Peer> {
+        let local = directory.local_device();
+        let listed = directory.nodes.iter().find(|node| node.id == self.node);
+        let names = self.source.snapshot().device_names();
+        let named = |origin: &str| names.iter().find(|n| n.origin == origin);
+        let station_local = listed.is_some_and(|node| node.local)
+            || self.origin.as_deref().is_some_and(|origin| local.is_local(origin));
+        let mut rows = Vec::with_capacity(config.peers.len() + 1);
+        if station_local {
+            let own = self.origin.as_deref().and_then(named);
+            rows.push(zork_ui::network::Peer {
+                id: self.origin.clone().unwrap_or_else(|| self.node.clone()),
+                name: own
+                    .map(|n| n.display.clone())
+                    .or_else(|| listed.map(|node| node.name.clone()))
+                    .unwrap_or_default(),
+                color: own
+                    .map(|n| n.color_key())
+                    .or_else(|| listed.and_then(|node| node.color_key.clone())),
+                machine: match own {
+                    Some(n) => Some(n.machine.clone()).filter(|machine| *machine != n.display),
+                    None => listed.and_then(|node| node.machine_name.clone()),
+                },
+                status: Some(self.directory.device_status(&self.node)),
+                linked: None,
+                permission: String::new(),
+                local: true,
+            });
+        }
+        rows.extend(
+            config
+                .peers
+                .iter()
+                .filter(|peer| !station_local || Some(&peer.origin) != self.origin.as_ref())
+                .map(|peer| {
+                    let named = named(&peer.origin);
+                    zork_ui::network::Peer {
+                        id: peer.origin.clone(),
+                        name: named.map_or_else(|| peer.name.clone(), |n| n.display.clone()),
+                        color: named.map(|n| n.color_key()),
+                        machine: named
+                            .map(|n| n.machine.clone())
+                            .filter(|machine| Some(machine) != named.map(|n| &n.display)),
+                        status: self.directory.device_status_for_origin(&peer.origin),
+                        linked: self.source.peer_online(&peer.origin),
+                        permission: if peer.collaborate {
+                            "同一 mesh · 任务协作已开启"
+                        } else if peer.client {
+                            "客户端 · 可管理此设备"
+                        } else {
+                            "设备 · 协作节点"
+                        }
+                        .into(),
+                        local: local.is_local(&peer.origin),
+                    }
+                }),
+        );
+        rows
+    }
     pub(super) fn enrollment_data(&self) -> zork_ui::network::EnrollmentData {
         let invitation = self.invitation.as_ref();
         let status = invitation.and_then(|i| i["status"].as_str()).unwrap_or("");
@@ -220,12 +286,10 @@ impl Render for MeshSettings {
             })
             .into_any_element();
         }
+        let directory = self.directory.snapshot();
+        let listed = directory.nodes.iter().find(|node| node.id == self.node);
         let data = zork_ui::network::NetworkData {
-            station: self
-                .directory
-                .node(&self.node)
-                .map(|node| node.name)
-                .unwrap_or_default(),
+            station: listed.map(|node| node.name.clone()).unwrap_or_default(),
             enabled: self.config.as_ref().is_some_and(|c| c.enabled),
             available: self.config.is_some(),
             busy: self.busy,
@@ -238,34 +302,7 @@ impl Render for MeshSettings {
             peers: self
                 .config
                 .as_ref()
-                .map(|c| {
-                    let names = self.source.snapshot().device_names();
-                    c.peers
-                        .iter()
-                        .map(|peer| {
-                            let named = names.iter().find(|n| n.origin == peer.origin);
-                            (peer, named)
-                        })
-                        .map(|(peer, named)| zork_ui::network::Peer {
-                            id: peer.origin.clone(),
-                            name: named.map_or_else(|| peer.name.clone(), |n| n.display.clone()),
-                            color: named.map(|n| n.color_key()),
-                            machine: named
-                                .map(|n| n.machine.clone())
-                                .filter(|machine| Some(machine) != named.map(|n| &n.display)),
-                            status: self.directory.device_status_for_origin(&peer.origin),
-                            linked: self.source.peer_online(&peer.origin),
-                            permission: if peer.collaborate {
-                                "同一 mesh · 任务协作已开启"
-                            } else if peer.client {
-                                "客户端 · 可管理此设备"
-                            } else {
-                                "设备 · 协作节点"
-                            }
-                            .into(),
-                        })
-                        .collect()
-                })
+                .map(|config| self.device_rows(config, &directory))
                 .unwrap_or_default(),
         };
         zork_ui::network::page(
