@@ -75,20 +75,15 @@ impl MeshAdmin {
         }
         source
     }
-    pub fn peer_status(&self, origin: &str) -> zork_client_types::device::DeviceStatus {
-        let device = self.device.upgrade().map(|device| device.snapshot());
-        crate::device_status::project(
-            device
-                .as_ref()
-                .and_then(|device| device.mesh_readiness.as_ref()),
-            self.snapshot()
-                .peers
-                .iter()
-                .find(|peer| peer.origin == origin)
-                .map(|peer| peer.online),
-            &Default::default(),
-            false,
-        )
+    /// Whether this station currently has a Mesh link to the member with
+    /// `origin`. This is node-to-node membership connectivity, not whether this
+    /// client can reach that member; it must not be shown as a device status.
+    pub fn peer_online(&self, origin: &str) -> Option<bool> {
+        self.snapshot()
+            .peers
+            .iter()
+            .find(|peer| peer.origin == origin)
+            .map(|peer| peer.online)
     }
     pub fn subscribe(&self) -> Subscription<MeshAdminData> {
         self.state.subscribe()

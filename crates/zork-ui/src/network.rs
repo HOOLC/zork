@@ -10,11 +10,19 @@ use std::rc::Rc;
 pub struct Peer {
     pub id: String,
     pub name: String,
-    pub status: crate::device_name::DeviceStatus,
+    /// Whether this client can reach the peer: the same core status shown next
+    /// to the device everywhere else. `None` when the peer is not a saved device
+    /// of this client (for example another client), so no dot is shown.
+    pub status: Option<crate::device_name::DeviceStatus>,
+    /// Whether the station owning this list currently has a Mesh link to the
+    /// peer. Node-to-node connectivity is worded, never drawn as a status dot.
+    pub linked: Option<bool>,
     pub permission: String,
 }
 #[derive(Clone, Default)]
 pub struct NetworkData {
+    /// Name of the station whose Mesh membership is listed.
+    pub station: String,
     pub enabled: bool,
     pub available: bool,
     pub peers: Vec<Peer>,
@@ -29,6 +37,15 @@ pub enum NetworkAction {
     CopyIdentity,
     Add,
     Remove(String),
+}
+/// Wording for a station's Mesh link to one member.
+pub fn link_text(station: &str, linked: bool) -> String {
+    match (station.is_empty(), linked) {
+        (true, true) => "Mesh 已互通".into(),
+        (true, false) => "Mesh 未互通".into(),
+        (false, true) => format!("与 {station} 已互通"),
+        (false, false) => format!("与 {station} 未互通"),
+    }
 }
 pub fn network<V: 'static>(
     data: NetworkData,
@@ -110,23 +127,35 @@ pub fn network<V: 'static>(
                 .items_center()
                 .gap_2()
                 .min_h(px(40.))
-                .child(
-                    div()
+                .child(div().min_w_0().text_size(px(14.)).child(match &peer.status {
+                    Some(status) => crate::device_name::label(
+                        format!("mesh-peer-{}", peer.id),
+                        peer.name.clone(),
+                        status,
+                        None,
+                    )
+                    .into_any_element(),
+                    None => div()
+                        .id(format!("mesh-peer-{}", peer.id))
                         .min_w_0()
-                        .text_size(px(14.))
-                        .child(crate::device_name::label(
-                            format!("mesh-peer-{}", peer.id),
-                            peer.name.clone(),
-                            &peer.status,
-                            None,
-                        )),
-                )
-                // Status is shape and text: the dot plus 在线 / 中继 / 离线.
-                .child(disclosure::meta(match peer.status {
-                    crate::device_name::DeviceStatus::Direct
-                    | crate::device_name::DeviceStatus::Connected => "在线".to_owned(),
-                    ref status => crate::device_name::status_text(status, None),
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(crate::device_name::mark(&peer.name, 18.))
+                        .child(div().min_w_0().text_ellipsis().child(peer.name.clone()))
+                        .automation(AutomationRole::Status, peer.name.clone())
+                        .into_any_element(),
                 }))
+                // Membership link of the listed station, in words: it is not
+                // this client's reachability, which the dot above shows.
+                .when_some(peer.linked, |v, linked| {
+                    let text = link_text(&data.station, linked);
+                    v.child(
+                        disclosure::meta(text.clone())
+                            .id(format!("mesh-peer-link-{}", peer.id))
+                            .automation(AutomationRole::Status, text),
+                    )
+                })
                 .when(!peer.permission.is_empty(), |v| {
                     v.child(disclosure::info(
                         format!("mesh-peer-permission-{}", peer.id),
@@ -355,17 +384,36 @@ impl NetworkStory {
             open: family == "enrollment" || state == "manual",
             family,
             data: NetworkData {
+                station: "mini1".into(),
                 enabled: true,
                 available: true,
                 peers: if state == "empty" {
                     vec![]
                 } else {
-                    vec![Peer {
-                        id: "mini2".into(),
-                        name: "mini2".into(),
-                        status: crate::device_name::DeviceStatus::Connected,
-                        permission: "客户端 · 可管理此节点".into(),
-                    }]
+                    vec![
+                        Peer {
+                            id: "mini2".into(),
+                            name: "mini2".into(),
+                            status: Some(crate::device_name::DeviceStatus::Direct),
+                            linked: Some(true),
+                            permission: "设备 · 协作节点".into(),
+                        },
+                        // Reachable from mini1, but not from this client.
+                        Peer {
+                            id: "studio".into(),
+                            name: "studio".into(),
+                            status: Some(crate::device_name::DeviceStatus::Offline),
+                            linked: Some(true),
+                            permission: "设备 · 协作节点".into(),
+                        },
+                        Peer {
+                            id: "pixel".into(),
+                            name: "Pixel 手机".into(),
+                            status: None,
+                            linked: Some(false),
+                            permission: "客户端 · 可管理此设备".into(),
+                        },
+                    ]
                 },
                 identity: Some("device-demo-01".into()),
                 busy: false,
@@ -525,7 +573,8 @@ impl gpui::Render for NetworkStory {
                                 v.data.peers.push(Peer {
                                     id: input.origin,
                                     name: input.name,
-                                    status: crate::device_name::DeviceStatus::Connected,
+                                    status: None,
+                                    linked: Some(false),
                                     permission: if v.grant {
                                         "客户端 · 可管理此设备"
                                     } else {

@@ -15,6 +15,7 @@ pub fn status_text(status: &DeviceStatus, locale: Option<&Text>) -> String {
         DeviceStatus::MeshStopping => ("device_mesh_stopping", "Mesh 停止中"),
         DeviceStatus::MeshStopped => ("device_mesh_stopped", "Mesh 已停止"),
         DeviceStatus::MeshFailed(_) => ("device_mesh_failed", "Mesh 启动失败"),
+        DeviceStatus::NotConnected => ("device_not_connected", "未连接"),
         DeviceStatus::Connecting => ("device_connecting", "连接中"),
         DeviceStatus::Direct => ("device_direct", "直连"),
         DeviceStatus::Relay => ("device_relay", "中继"),
@@ -35,7 +36,10 @@ pub fn status_symbol(status: &DeviceStatus) -> &'static str {
         DeviceStatus::Relay => "◉",
         DeviceStatus::MeshPreparing | DeviceStatus::MeshStopping | DeviceStatus::Connecting => "◌",
         DeviceStatus::MeshFailed(_) | DeviceStatus::Revoked => "×",
-        DeviceStatus::MeshNotStarted | DeviceStatus::MeshStopped | DeviceStatus::Offline => "○",
+        DeviceStatus::MeshNotStarted
+        | DeviceStatus::MeshStopped
+        | DeviceStatus::NotConnected
+        | DeviceStatus::Offline => "○",
     }
 }
 

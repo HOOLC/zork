@@ -423,14 +423,10 @@ impl Directory {
             .iter()
             .map(|node| {
                 let mut value = directory_node(node);
-                value["status"] = json!(states.get(&node.id).cloned().unwrap_or_else(|| {
-                    crate::device_status::project(
-                        Some(&readiness),
-                        None,
-                        &Default::default(),
-                        false,
-                    )
-                }));
+                value["status"] = json!(states
+                    .get(&node.id)
+                    .cloned()
+                    .unwrap_or_else(|| crate::device_status::unconnected(Some(&readiness))));
                 value
             })
             .collect();

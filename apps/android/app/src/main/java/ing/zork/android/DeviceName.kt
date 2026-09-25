@@ -16,10 +16,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 
-/** Presentation of the shared Rust DeviceStatus, without readiness inference. */
-internal data class DeviceStatusUi(val state: String = "connecting", val error: String? = null)
+/** Presentation of the shared Rust DeviceStatus, without readiness inference.
+ * A missing status is "not connected": the app never invents a connection attempt. */
+internal data class DeviceStatusUi(val state: String = "not_connected", val error: String? = null)
 internal fun JSONObject.deviceStatus() = optJSONObject("status")?.let {
-    DeviceStatusUi(it.text("state", "connecting"), it.text("error").ifBlank { null })
+    DeviceStatusUi(it.text("state", "not_connected"), it.text("error").ifBlank { null })
 } ?: DeviceStatusUi()
 
 internal fun deviceStatusText(status: DeviceStatusUi): String = when (status.state) {
@@ -33,7 +34,8 @@ internal fun deviceStatusText(status: DeviceStatusUi): String = when (status.sta
     "connected" -> "已连接"
     "offline" -> "离线"
     "revoked" -> "访问已撤销"
-    else -> "连接中"
+    "connecting" -> "连接中"
+    else -> "未连接"
 }
 internal fun deviceNameSummary(name: String, status: DeviceStatusUi) = "$name · ${deviceStatusText(status)}"
 internal fun compactDeviceName(name: String, status: DeviceStatusUi) = "$name ${when (status.state) {

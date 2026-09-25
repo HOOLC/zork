@@ -148,7 +148,10 @@ private fun discoverFixture(profile: JSONObject, profiles: List<JSONObject>, pro
 private fun obj(vararg pairs: Pair<String, Any?>) = JSONObject().apply { pairs.forEach { put(it.first, it.second ?: JSONObject.NULL) } }
 private fun leader(id: String, name: String, avatar: String) = obj("id" to id,"name" to name,"avatar" to avatar,"can_open" to true)
 private fun task(id: String, title: String, unread: Int = 0) = obj("chat_id" to id,"title" to title,"unread" to (unread > 0),"in_preview" to true)
-private fun fixturePeers() = listOf(Peer("mini1","mini1",""), Peer("mini2","mini2",""))
+/** Statuses arrive as core serializes them in the directory snapshot. */
+private fun fixturePeers() = listOf(
+    Peer("mini1","mini1","", JSONObject("""{"status":{"state":"direct"}}""").deviceStatus()),
+    Peer("mini2","mini2","", JSONObject("""{"status":{"state":"offline"}}""").deviceStatus()))
 private fun fixture(route: String): WorkbenchState {
     val peers = fixturePeers()
     val product = leader("product","产品 Leader","fox"); val engineering = leader("engineering","工程 Leader","dog"); val research = leader("research","研究 Leader","owl")

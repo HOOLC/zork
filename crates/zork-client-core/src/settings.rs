@@ -94,6 +94,24 @@ fn update(info: &Value, check: Option<&Value>, command: Option<&Value>) -> Value
     })
 }
 
+/// Why saved settings are shown instead of fresh ones. Derived from the one
+/// device status, so this line never claims a connection attempt the device
+/// name does not show.
+fn connection_state(
+    online: bool,
+    status: &zork_client_types::device::DeviceStatus,
+) -> &'static str {
+    use zork_client_types::device::DeviceStatus;
+    match status {
+        _ if online => "online",
+        DeviceStatus::Connecting => "connecting",
+        DeviceStatus::Direct | DeviceStatus::Relay | DeviceStatus::Connected => "syncing",
+        DeviceStatus::Offline => "offline",
+        DeviceStatus::Revoked => "revoked",
+        _ => "not_connected",
+    }
+}
+
 pub(crate) fn snapshot(store: &ClientStore, peer: &str) -> Result<Value> {
     if store.replica_revoked(peer)? {
         return Ok(
@@ -155,11 +173,10 @@ pub(crate) fn snapshot(store: &ClientStore, peer: &str) -> Result<Value> {
     snapshot["update_check"] = json!(update_check);
     snapshot["profile_refreshing"] = json!(profiles.as_ref().map(|p| &p.refreshing));
     snapshot["profile_failed"] = json!(profiles.as_ref().map(|p| &p.failed));
-    snapshot["connection_state"] = json!(match state.as_ref().and_then(|s| s.online) {
-        None => "connecting",
-        Some(true) if online => "online",
-        _ => "offline",
-    });
+    snapshot["connection_state"] = json!(connection_state(
+        online,
+        &state.as_ref().map(|s| s.status.clone()).unwrap_or_default()
+    ));
     snapshot["online"] = json!(online);
     if error.is_some() {
         snapshot["error"] = json!(error);
@@ -202,7 +219,8 @@ pub(crate) async fn refresh(
         }
         Err(error) => {
             snapshot["online"] = json!(false);
-            snapshot["connection_state"] = json!("offline");
+            snapshot["connection_state"] =
+                json!(connection_state(false, &device.snapshot().status));
             snapshot["error"] = json!(error.to_string());
         }
     }
@@ -212,6 +230,27 @@ pub(crate) async fn refresh(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_settings_notice_follows_the_device_status() {
+        use zork_client_types::device::DeviceStatus;
+        assert_eq!(connection_state(true, &DeviceStatus::Direct), "online");
+        assert_eq!(
+            connection_state(false, &DeviceStatus::Connecting),
+            "connecting"
+        );
+        assert_eq!(connection_state(false, &DeviceStatus::Relay), "syncing");
+        assert_eq!(connection_state(false, &DeviceStatus::Offline), "offline");
+        // Nothing is being attempted: never claim a connection in progress.
+        assert_eq!(
+            connection_state(false, &DeviceStatus::NotConnected),
+            "not_connected"
+        );
+        assert_eq!(
+            connection_state(false, &DeviceStatus::MeshStopped),
+            "not_connected"
+        );
+    }
 
     #[test]
     fn update_state_compares_versions_and_tracks_the_check_command() {
