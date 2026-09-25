@@ -619,7 +619,12 @@ impl DesktopRoot {
             self.mesh_settings = Some(mesh.clone());
         } else {
             let mesh = cx.new(|cx| {
-                mesh_settings::MeshSettings::new(retained.read(cx).core_device().mesh_admin(), cx)
+                mesh_settings::MeshSettings::new(
+                    retained.read(cx).core_device().mesh_admin(),
+                    self.source.clone(),
+                    node.id.clone(),
+                    cx,
+                )
             });
             self.mesh_views
                 .insert(node.id.clone(), (binding, mesh.clone()));
@@ -1411,6 +1416,14 @@ pub use ui::settings_content as headless_settings_content;
 
 #[cfg(feature = "headless-bench")]
 pub mod stories;
+
+#[cfg(feature = "headless-bench")]
+impl DesktopRoot {
+    /// Tests: open a management page directly, including the Mesh member page.
+    pub fn headless_manage(&mut self, tab: usize, cx: &mut Context<Self>) {
+        self.apply_navigation(navigation::Destination::Manage(tab), cx);
+    }
+}
 
 #[cfg(feature = "headless-bench")]
 mod notification_story;

@@ -31,6 +31,8 @@ pub enum MeshReadiness {
 }
 
 /// Core-owned presentation state shared by device names on every surface.
+/// It describes whether this client can reach the station. The default is an
+/// explicit "not connected", never an assumed connection attempt.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "state", content = "error", rename_all = "snake_case")]
 pub enum DeviceStatus {
@@ -39,7 +41,9 @@ pub enum DeviceStatus {
     MeshStopping,
     MeshStopped,
     MeshFailed(String),
+    /// No connection from this client exists or is being attempted.
     #[default]
+    NotConnected,
     Connecting,
     Direct,
     Relay,

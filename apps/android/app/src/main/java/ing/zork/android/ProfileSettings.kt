@@ -235,7 +235,12 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
             item(key = "notice") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!state.online) Text(if (state.connectionState == "connecting") "正在连接设备…" else "设备离线，显示已保存的设置", color = ZorkColors.Subtle, fontSize = 12.sp)
+                    if (!state.online) Text(when (state.connectionState) {
+                        "connecting" -> "正在连接设备…"
+                        "syncing" -> "正在同步设备设置…"
+                        "offline" -> "设备离线，显示已保存的设置"
+                        else -> "未连接设备，显示已保存的设置"
+                    }, color = ZorkColors.Subtle, fontSize = 12.sp)
                     (error ?: state.profileMessage ?: state.message)?.takeIf { it.isNotBlank() }?.let {
                         Text(it, color = ZorkColors.Danger, fontSize = 13.sp, lineHeight = 19.sp,
                             modifier = Modifier.fillMaxWidth().background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(horizontal = 16.dp, vertical = 10.dp))
