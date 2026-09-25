@@ -20,7 +20,10 @@ impl RootView {
                         _ => None,
                     }),
                 environment: self.device_name.as_ref().map(|name| {
-                    zork_ui::device_name::summary(name, &self.core_device.snapshot().status, None)
+                    zork_ui::history_page::Environment {
+                        name: name.clone(),
+                        status: self.core_device.snapshot().status.clone(),
+                    }
                 }),
                 provider: raw
                     .and_then(|r| r.profile.as_ref())

@@ -528,6 +528,15 @@ impl Directory {
                             tokio::task::spawn_blocking(move || host.refresh_host_status());
                         }
                     }
+                    if let Some(group) = &update.state.mesh.group {
+                        // Names first: they do not depend on member sync.
+                        if let Err(error) = directory
+                            .store
+                            .apply_mesh_names(group, update.state.mesh.names.as_ref())
+                        {
+                            tracing::debug!(%error, "Mesh display names not recorded");
+                        }
+                    }
                     if let (Some(origin), Some(group)) =
                         (&update.state.mesh.origin, &update.state.mesh.group)
                     {
@@ -570,6 +579,8 @@ impl Directory {
         anyhow::ensure!(origin.starts_with("key:"), "请填写有效的设备身份");
         let addr = address.trim();
         Ok(SavedNode {
+            machine_name: None,
+            color_key: None,
             id: origin.clone(),
             name,
             url: String::new(),
@@ -635,6 +646,7 @@ impl Directory {
                 .map(|node| zork_client_types::new_chat::OptionItem {
                     value: node.id.clone(),
                     label: node.name.clone(),
+                    machine: node.machine_name.clone(),
                     status: Some(
                         snapshot
                             .device_statuses
@@ -691,18 +703,16 @@ impl Directory {
             }
         }
     }
+    /// Validation the rename field shows while typing, before anything is sent.
+    pub fn validate_display_name(&self, node: &SavedNode, name: &str) -> Result<String> {
+        crate::device_names::validate(&self.store, &node.id, name)
+    }
+    /// Renames the device's Mesh-wide display name through its Station.
     pub async fn rename(&self, node: &SavedNode, name: String) -> Result<()> {
-        let name = zork_config::membership::validate_device_name(&name)?;
         let (binding, client) = self.connection(&node.id)?;
-        let value = client
-            .node_request(
-                http::Method::PUT,
-                "/v1/node/name".into(),
-                Some(json!({"name":name})),
-            )
-            .await?;
+        crate::device_names::validate(&self.store, &node.id, &name)?;
         self.ensure_connection(&node.id, binding)?;
-        crate::device_metadata::record(&self.store, &node.id, "/v1/node/name", &value)?;
+        crate::device_names::rename(&self.store, &client, &node.id, &name).await?;
         self.publish_nodes()
     }
     pub async fn update_release(self: &Arc<Self>, node: &SavedNode, install: bool) -> Result<()> {
@@ -831,7 +841,7 @@ impl Directory {
                 .get(&member.origin)
                 .and_then(|id| nodes.iter_mut().find(|n| n.id == *id))
             {
-                saved.name = member.name.clone();
+                saved.set_name(member.name.clone());
                 self.store.save_node(saved)?;
             }
         }
@@ -846,12 +856,14 @@ impl Directory {
                 .iter_mut()
                 .find(|n| n.mesh.as_ref().is_some_and(|m| m.origin == member.origin))
             {
-                saved.name = member.name.clone();
+                saved.set_name(member.name.clone());
                 saved.mesh.as_mut().unwrap().addr = member.addr.clone();
                 saved.mesh.as_mut().unwrap().routes = member.routes.clone();
                 saved.clone()
             } else {
                 let node = SavedNode {
+                    machine_name: None,
+                    color_key: None,
                     id: member.origin.clone(),
                     name: member.name.clone(),
                     url: String::new(),
@@ -976,6 +988,8 @@ mod tests {
         .unwrap()
         .unwrap();
         let node = |id: &str, url: &str, mesh: Option<&str>| SavedNode {
+            machine_name: None,
+            color_key: None,
             id: id.into(),
             name: id.into(),
             url: url.into(),
@@ -1089,6 +1103,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let directory = Directory::open(root.path()).unwrap();
         let mut node = SavedNode {
+            machine_name: None,
+            color_key: None,
             id: "fixture".into(),
             name: "current name".into(),
             url: format!("http://{}", listener.local_addr().unwrap()),

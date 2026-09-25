@@ -112,6 +112,8 @@ mod tests {
 
     fn node(id: &str, name: &str) -> SavedNode {
         SavedNode {
+            machine_name: None,
+            color_key: None,
             id: id.into(),
             name: name.into(),
             url: String::new(),

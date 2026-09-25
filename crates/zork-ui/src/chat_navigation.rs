@@ -40,6 +40,10 @@ pub enum Action {
 pub struct Device {
     pub id: String,
     pub name: String,
+    /// Registered machine name, when it differs from the display `name`.
+    pub machine: Option<String>,
+    /// Stable colour key from core (join order or identity).
+    pub color: Option<String>,
     pub online: Option<bool>,
     pub status: crate::device_name::DeviceStatus,
     pub direct: bool,
@@ -49,9 +53,15 @@ pub struct Device {
     pub chatting: bool,
 }
 impl Device {
+    pub fn device_name(&self) -> crate::device_name::DeviceName {
+        crate::device_name::DeviceName::new(self.name.clone(), self.machine.clone())
+            .with_color(self.color.clone())
+    }
     fn same(&self, other: &Self) -> bool {
         self.id == other.id
             && self.name == other.name
+            && self.machine == other.machine
+            && self.color == other.color
             && self.status == other.status
             && self.online == other.online
             && self.direct == other.direct
@@ -120,8 +130,7 @@ impl Navigation {
                 .iter()
                 .flat_map(|device| {
                     device.chats.iter().filter_map(move |chat| {
-                        (!chat.archived)
-                            .then(|| format!("chat-{}-{}", device.id, chat.chat_id))
+                        (!chat.archived).then(|| format!("chat-{}-{}", device.id, chat.chat_id))
                     })
                 })
                 .collect::<HashSet<_>>();
@@ -432,7 +441,14 @@ impl Navigation {
             })
             // One capsule line: the execution device's mark, then the title. The
             // device's reachability lives in the device dock and the details tooltip.
-            .child(crate::device_name::mark(&device.name, 18.))
+            .child(crate::device_name::mark_keyed(
+                &device.name,
+                &device
+                    .color
+                    .clone()
+                    .unwrap_or_else(|| crate::device_name::color_key(&device.name)),
+                18.,
+            ))
             .child(
                 div()
                     .flex_1()
@@ -694,7 +710,7 @@ impl Navigation {
                 .pl(px(10.))
                 .child(crate::device_name::label(
                     format!("device-dock-name-{}", device.id),
-                    device.name.clone(),
+                    device.device_name(),
                     &device.status,
                     Some(&self.locale),
                 ))
@@ -704,7 +720,7 @@ impl Navigation {
                 .automation(
                     AutomationRole::Button,
                     crate::device_name::accessible_summary(
-                        &device.name,
+                        device.device_name(),
                         &device.status,
                         Some(&self.locale),
                     ),
@@ -718,15 +734,17 @@ impl Navigation {
             .children(devices)
             .child(div().h(px(12.)))
             .child(
-            self.tabs
-                .tab("desktop-manage".into(), false)
-                .child(ui::icon("icons/settings.svg", 16.))
-                .child(self.locale.text("nav_settings"))
-                .on_click(
-                    cx.listener(|v, _, _, cx| v.go(v.active.clone(), Destination::Manage(4), cx)),
-                )
-                .automation(AutomationRole::Button, self.locale.text("nav_settings")),
-        )
+                self.tabs
+                    .tab("desktop-manage".into(), false)
+                    .child(ui::icon("icons/settings.svg", 16.))
+                    .child(self.locale.text("nav_settings"))
+                    .on_click(
+                        cx.listener(|v, _, _, cx| {
+                            v.go(v.active.clone(), Destination::Manage(4), cx)
+                        }),
+                    )
+                    .automation(AutomationRole::Button, self.locale.text("nav_settings")),
+            )
     }
 }
 

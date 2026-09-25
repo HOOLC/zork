@@ -10,6 +10,10 @@ use std::rc::Rc;
 pub struct Peer {
     pub id: String,
     pub name: String,
+    /// Registered machine name, when it differs from the display `name`.
+    pub machine: Option<String>,
+    /// Stable colour key from core (join order or identity).
+    pub color: Option<String>,
     /// Whether this client can reach the peer: the same core status shown next
     /// to the device everywhere else. `None` when the peer is not a saved device
     /// of this client (for example another client), so no dot is shown.
@@ -60,17 +64,14 @@ pub fn network<V: 'static>(
     let action = Rc::new(action);
     let more_action = action.clone();
     let enabled = data.enabled;
-    let mut items = vec![
-        Item::new("mesh-new-peer", "手动连接"),
-        {
-            let item = Item::new("node-mesh-toggle", "允许设备连接").check(enabled);
-            if data.busy || !data.available {
-                item.disabled()
-            } else {
-                item
-            }
-        },
-    ];
+    let mut items = vec![Item::new("mesh-new-peer", "手动连接"), {
+        let item = Item::new("node-mesh-toggle", "允许设备连接").check(enabled);
+        if data.busy || !data.available {
+            item.disabled()
+        } else {
+            item
+        }
+    }];
     items.push(if data.identity.is_some() {
         Item::new("copy-node-origin", "复制节点身份")
     } else {
@@ -130,21 +131,36 @@ pub fn network<V: 'static>(
                 .child(div().min_w_0().text_size(px(14.)).child(match &peer.status {
                     Some(status) => crate::device_name::label(
                         format!("mesh-peer-{}", peer.id),
-                        peer.name.clone(),
+                        crate::device_name::DeviceName::new(peer.name.clone(), peer.machine.clone())
+                            .with_color(peer.color.clone()),
                         status,
                         None,
                     )
                     .into_any_element(),
-                    None => div()
-                        .id(format!("mesh-peer-{}", peer.id))
-                        .min_w_0()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(crate::device_name::mark(&peer.name, 18.))
-                        .child(div().min_w_0().text_ellipsis().child(peer.name.clone()))
-                        .automation(AutomationRole::Status, peer.name.clone())
-                        .into_any_element(),
+                    None => {
+                        let id: gpui::ElementId = format!("mesh-peer-{}", peer.id).into();
+                        let name = crate::device_name::DeviceName::new(
+                            peer.name.clone(),
+                            peer.machine.clone(),
+                        );
+                        div()
+                            .id(id.clone())
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(crate::device_name::mark_keyed(
+                                &peer.name,
+                                &peer
+                                    .color
+                                    .clone()
+                                    .unwrap_or_else(|| crate::device_name::color_key(&peer.name)),
+                                18.,
+                            ))
+                            .child(crate::device_name::name_text(&id, &name))
+                            .automation(AutomationRole::Status, name.accessible())
+                            .into_any_element()
+                    }
                 }))
                 // Membership link of the listed station, in words: it is not
                 // this client's reachability, which the dot above shows.
@@ -200,7 +216,11 @@ pub fn network<V: 'static>(
                 .child(disclosure::meta("同一 Google 账号的手机会自动出现在这里")),
         )
         .when(!enabled, |v| {
-            v.child(div().pt_2().child(disclosure::meta("设备连接已关闭，可在“更多”中开启。")))
+            v.child(
+                div()
+                    .pt_2()
+                    .child(disclosure::meta("设备连接已关闭，可在“更多”中开启。")),
+            )
         })
         .when_some(data.notice, |v, text| {
             v.child(div().mt_4().child(ui::feedback(text)))
@@ -393,7 +413,9 @@ impl NetworkStory {
                     vec![
                         Peer {
                             id: "mini2".into(),
-                            name: "mini2".into(),
+                            name: "B".into(),
+                            machine: Some("mini2".into()),
+                            color: Some("seq:1".into()),
                             status: Some(crate::device_name::DeviceStatus::Direct),
                             linked: Some(true),
                             permission: "设备 · 协作节点".into(),
@@ -401,14 +423,18 @@ impl NetworkStory {
                         // Reachable from mini1, but not from this client.
                         Peer {
                             id: "studio".into(),
-                            name: "studio".into(),
+                            name: "C".into(),
+                            machine: Some("zuozijians-Mac-Studio".into()),
+                            color: Some("seq:2".into()),
                             status: Some(crate::device_name::DeviceStatus::Offline),
                             linked: Some(true),
                             permission: "设备 · 协作节点".into(),
                         },
                         Peer {
                             id: "pixel".into(),
-                            name: "Pixel 手机".into(),
+                            name: "D".into(),
+                            machine: Some("Pixel 手机".into()),
+                            color: Some("seq:3".into()),
                             status: None,
                             linked: Some(false),
                             permission: "客户端 · 可管理此设备".into(),
@@ -573,6 +599,8 @@ impl gpui::Render for NetworkStory {
                                 v.data.peers.push(Peer {
                                     id: input.origin,
                                     name: input.name,
+                                    machine: None,
+                                    color: None,
                                     status: None,
                                     linked: Some(false),
                                     permission: if v.grant {

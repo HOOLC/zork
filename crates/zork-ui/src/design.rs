@@ -173,20 +173,21 @@ pub const RADIUS: Radii = Radii {
 /// Stable identity hues for devices. They mark which device a Chat or message
 /// belongs to and never express status; status keeps its own shape and text.
 /// Both themes share lightness and chroma within the set; dark lifts it a step.
-pub static DEVICE_HUES: Themed<[u32; 5]> = Themed::new(
-    [0x5E8B6B, 0x56759A, 0xA27A2B, 0x87618F, 0x3E8787],
-    [0x6E9D7B, 0x6C8BB0, 0xB8903E, 0x9D78A6, 0x52A0A0],
+/// Ordered so neighbouring slots sit far apart on the wheel: devices take
+/// slots in join order (blue, amber, green, plum, teal, raspberry).
+pub static DEVICE_HUES: Themed<[u32; 6]> = Themed::new(
+    [0x56759A, 0xA27A2B, 0x5E8B6B, 0x87618F, 0x3E8787, 0xA5607A],
+    [0x6C8BB0, 0xB8903E, 0x6E9D7B, 0x9D78A6, 0x52A0A0, 0xBC7890],
 );
 /// Selected text in inputs and messages (RGBA).
 pub static TEXT_SELECTION: Themed<u32> = Themed::new(0xC9DCF5CC, 0x35507ACC);
 /// Inline code ink inside prose.
 pub static CODE_INK: Themed<u32> = Themed::new(0x7C3FA0, 0xC9A2E8);
+/// Hue for a device's stable colour key (join order or identity, from core);
+/// never its display name, so renaming keeps the colour.
 pub fn device_hue(key: &str) -> u32 {
-    let hash = key
-        .bytes()
-        .fold(0x811C9DC5u32, |hash, byte| (hash ^ byte as u32).wrapping_mul(0x0100_0193));
     let hues = *DEVICE_HUES;
-    hues[hash as usize % hues.len()]
+    hues[zork_client_types::device::color_slot(key, hues.len())]
 }
 pub const BORDER_WIDTH: f32 = 0.5;
 
@@ -714,3 +715,17 @@ pub const LEADER_SIDEBAR_WIDTH: f32 = 264.;
 
 /// Unified desktop device navigation; the legacy station shell keeps its rail.
 pub const DEVICE_SIDEBAR_WIDTH: f32 = 240.;
+
+#[cfg(test)]
+mod device_hue_tests {
+    #[test]
+    fn devices_in_join_order_get_distinct_hues_and_renames_keep_them() {
+        let hues: Vec<_> = (0..6).map(|n| super::device_hue(&format!("seq:{n}"))).collect();
+        let mut unique = hues.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), 6, "{hues:x?}");
+        // The key is stable identity; the display name never enters it.
+        assert_eq!(super::device_hue("seq:1"), super::device_hue("seq:7"));
+    }
+}

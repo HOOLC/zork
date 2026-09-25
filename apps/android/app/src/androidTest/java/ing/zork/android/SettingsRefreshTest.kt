@@ -54,8 +54,11 @@ class SettingsRefreshTest {
                 if(screen=="profile") assertNull(find("从提供商获取模型"))
                 capture(screen)
                 if(width==0 && screen=="device") {
-                    click("更多");click("重命名");capture("rename")
-                    click("保存");scenario.onActivity{assertEquals("rename_device",it.lastAction)}
+                    // The short display name leads; the machine name stays in the details.
+                    assertNotNull(find("B"));assertNotNull(find("机器名称 工作室的 MacBook Air"))
+                    click("更多");click("修改显示名称");capture("rename")
+                    assertNotNull(find("修改显示名称"));assertNotNull(find("Mesh 中的所有设备和手机都会看到新名称，机器名称 工作室的 MacBook Air 保持不变。"))
+                    click("保存");scenario.onActivity{assertEquals("rename_device",it.lastAction);assertEquals("B",it.lastBody!!.getString("name"))}
                 }
                 if(width==0 && screen=="models") {click("添加");capture("connection-editor")}
                 if(width==0 && screen=="profile") {click("手动添加");capture("model-editor")}

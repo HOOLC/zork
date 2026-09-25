@@ -25,6 +25,27 @@ pub struct SavedNode {
     pub mesh: Option<RemoteNode>,
     #[serde(default)]
     pub group: Option<String>,
+    /// The machine name the device registered with, set by `nodes()` when
+    /// `name` holds a different Mesh display name. Never stored: saving a
+    /// listed node keeps the machine name as its stored name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_name: Option<String>,
+    /// Stable colour key, set by `nodes()`: the Mesh join order (`seq:N`) or
+    /// the device identity. Never stored and unchanged by renames.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_key: Option<String>,
+}
+impl SavedNode {
+    /// Replaces the stored (machine) name, dropping any display projection.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+        self.machine_name = None;
+    }
+    /// Both names for presentation: what surfaces show and the name to hint.
+    pub fn device_name(&self) -> zork_client_types::device::DeviceName {
+        zork_client_types::device::DeviceName::new(self.name.clone(), self.machine_name.clone())
+            .with_color(self.color_key.clone())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -67,6 +88,21 @@ pub fn delivery_now_ms() -> u64 {
 // uncertain, so upgrading never exposes a false "withdraw unsent" action.
 fn legacy_delivery_uncertain() -> bool {
     true
+}
+/// The Mesh identity of a saved device: its peer key, or for a Station
+/// reached by URL the identity it reported.
+fn origin_of(conn: &Connection, node: &SavedNode) -> Result<Option<String>> {
+    Ok(match &node.mesh {
+        Some(mesh) => Some(mesh.origin.clone()),
+        None => conn
+            .query_row(
+                "SELECT value FROM cache WHERE node=?1 AND key='mesh-origin'",
+                [&node.id],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?
+            .and_then(|value| serde_json::from_str::<String>(&value).ok()),
+    })
 }
 pub struct ClientStore(
     Mutex<Connection>,
@@ -233,10 +269,22 @@ impl ClientStore {
             .prepare("SELECT value FROM nodes ORDER BY rowid")?
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        let naming = directory::naming(&conn)?;
         let mut nodes = rows.into_iter().map(|row| {
             let mut node:SavedNode=serde_json::from_str(&row)?;
             let name:Option<String>=conn.query_row("SELECT json_extract(value,'$.name') FROM replica_entities WHERE peer=?1 AND scope=?2 AND kind='device' AND id='self' AND value IS NOT NULL",params![node.id,zork_client_types::sync::Scope::Catalog{}.key()],|r|r.get(0)).optional()?.flatten();
             if let Some(name)=name.filter(|name|!crate::device_label::is_id_like(name)){node.name=name;}
+            let origin = origin_of(&conn, &node)?;
+            // The Mesh display name replaces the machine name everywhere.
+            let named = origin.as_ref().and_then(|origin| directory::display_name(&naming, node.group.as_deref(), origin));
+            node.color_key = Some(match &named {
+                Some(named) => named.color_key(),
+                None => origin.clone().unwrap_or_else(|| node.id.clone()),
+            });
+            if let Some(named) = named {
+                node.machine_name = Some(named.machine.clone()).filter(|machine| *machine != named.display);
+                node.name = named.display;
+            }
             Ok(node)
         }).collect::<Result<Vec<_>>>()?;
         // Every client reads device names from here, so they never show a key.
@@ -309,6 +357,12 @@ impl ClientStore {
     }
 
     pub fn save_node(&self, node: &SavedNode) -> Result<()> {
+        let mut node = node.clone();
+        if let Some(machine) = node.machine_name.take() {
+            node.name = machine;
+        }
+        node.color_key = None;
+        let node = &node;
         let changed = self.0.lock().expect("client database").execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value WHERE nodes.value != excluded.value",params![node.id,serde_json::to_string(node)?])?;
         if changed > 0 {
             self.directory_changed();

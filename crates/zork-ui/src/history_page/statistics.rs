@@ -1,10 +1,17 @@
 use super::*;
 
+/// The device a Session runs on, as every device-name surface shows it.
+#[derive(Clone, Default)]
+pub struct Environment {
+    pub name: crate::device_name::DeviceName,
+    pub status: crate::device_name::DeviceStatus,
+}
+
 #[derive(Clone, Default)]
 pub struct Runtime {
     pub name: String,
     pub role: Option<String>,
-    pub environment: Option<String>,
+    pub environment: Option<Environment>,
     pub provider: Option<String>,
     pub model: Option<String>,
 }
@@ -78,7 +85,10 @@ impl Statistics {
             .flex()
             .items_center()
             .gap(px(6.))
+            // Shrinks before the 用量 toggle: the model, then the name, truncate.
+            .flex_1()
             .min_w_0()
+            .overflow_hidden()
             .text_size(px(12.))
             .line_height(px(18.))
             .text_color(rgb(DIM()))
@@ -86,6 +96,8 @@ impl Statistics {
             .child(
                 div()
                     .max_w(px((width * 0.4).max(80.)))
+                    .min_w(px(24.))
+                    .flex_shrink(1.)
                     .truncate()
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(TEXT()))
@@ -121,24 +133,50 @@ impl Statistics {
             breakdown,
             format!("{} {}", text.text("history_cache_rate"), cache),
         ];
-        let environment = runtime
-            .environment
+        // Role · device · provider. The device uses the shared device-name
+        // component, so its status keeps its own dot, colour and wording.
+        let role = runtime
+            .role
             .clone()
-            .unwrap_or_else(|| text.text("history_environment_unknown"));
-        details.push(
-            [
-                runtime
-                    .role
-                    .clone()
-                    .filter(|role| role.to_lowercase() != name.to_lowercase()),
-                Some(environment),
-                runtime.provider.clone(),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(" · "),
-        );
+            .filter(|role| role.to_lowercase() != name.to_lowercase());
+        let device = match &runtime.environment {
+            Some(environment) => crate::device_name::label(
+                "history-device",
+                environment.name.clone(),
+                &environment.status,
+                Some(&text),
+            )
+            .into_any_element(),
+            None => div()
+                .child(text.text("history_environment_unknown"))
+                .into_any_element(),
+        };
+        let mut parts = vec![];
+        if let Some(role) = role {
+            parts.push(div().flex_shrink_0().child(role).into_any_element());
+        }
+        parts.push(device);
+        if let Some(provider) = runtime.provider.clone() {
+            parts.push(div().flex_shrink_0().child(provider).into_any_element());
+        }
+        let mut runtime_line = div()
+            .id("history-runtime")
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .min_w_0()
+            .overflow_hidden();
+        for (index, part) in parts.into_iter().enumerate() {
+            if index > 0 {
+                runtime_line = runtime_line.child(dot());
+            }
+            runtime_line = runtime_line.child(part);
+        }
+        let runtime_label = runtime
+            .environment
+            .as_ref()
+            .map(|e| crate::device_name::accessible_summary(e.name.clone(), &e.status, Some(&text)))
+            .unwrap_or_default();
         let usage_panel = div()
             .flex()
             .flex_col()
@@ -148,16 +186,7 @@ impl Statistics {
             .text_color(rgb(DIM()))
             .child(div().id("history-cache").child(details[1].clone()).automation(AutomationRole::Status, cache.clone()))
             .child(details[0].clone())
-            .child(
-                div()
-                    .id("history-runtime")
-                    .truncate()
-                    .child(details[2].clone())
-                    .automation(
-                        AutomationRole::Status,
-                        runtime.environment.clone().unwrap_or_default(),
-                    ),
-            );
+            .child(runtime_line.automation(AutomationRole::Status, runtime_label));
         // The toggle sits in the summary line and the panel opens below it,
         // both driven by the same disclosure so the panel grows with it.
         let (usage_toggle, usage_body) = crate::components::disclosure::expander_parts(
@@ -182,8 +211,9 @@ impl Statistics {
                     .flex()
                     .items_center()
                     .gap_2()
+                    .min_w_0()
                     .child(line)
-                    .child(usage_toggle),
+                    .child(div().flex_shrink_0().child(usage_toggle)),
             )
             .children(usage_body)
             .automation(

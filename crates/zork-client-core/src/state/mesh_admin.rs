@@ -11,6 +11,8 @@ use std::{
 #[derive(Clone, Default, PartialEq)]
 pub struct MeshAdminData {
     pub config: Option<zork_config::MeshConfig>,
+    /// The authority's display names as this Station holds them.
+    pub names: Option<zork_config::membership::MeshNames>,
     pub origin: Option<String>,
     pub peers: Vec<MeshPeer>,
     pub invitation: Option<Value>,
@@ -37,6 +39,17 @@ pub struct MeshAdmin {
     owned: Mutex<MeshAdminData>,
     state: Observable<MeshAdminData>,
     watcher: Mutex<Option<zork_notify::Task<()>>>,
+}
+impl MeshAdminData {
+    /// Display and machine names of the listed Mesh's devices; empty
+    /// outside a Mesh.
+    pub fn device_names(&self) -> Vec<zork_config::membership::ResolvedName> {
+        self.config
+            .as_ref()
+            .and_then(|config| config.group.as_ref())
+            .map(|group| zork_config::membership::resolve(group, self.names.as_ref()))
+            .unwrap_or_default()
+    }
 }
 impl MeshAdmin {
     pub(super) fn new(
@@ -155,8 +168,10 @@ impl MeshAdmin {
             .node_request(http::Method::GET, "/v1/node/mesh".into(), None)
             .await?;
         let config: zork_config::MeshConfig = serde_json::from_value(value["config"].clone())?;
+        let names = serde_json::from_value(value["names"].clone()).ok();
         self.commit(|s| {
             s.config = Some(config.clone());
+            s.names = names;
             s.origin = value["origin"].as_str().map(str::to_owned);
         });
         Ok(config)

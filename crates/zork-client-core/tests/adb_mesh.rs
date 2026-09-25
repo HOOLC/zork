@@ -182,7 +182,7 @@ impl HostIdentity {
         })
     }
     fn save(&self, store: &ClientStore, name: &str) -> Result<()> {
-        store.save_node(&SavedNode {
+        store.save_node(&SavedNode { machine_name: None, color_key: None,
             id: self.origin.clone(),
             name: name.into(),
             url: String::new(),

@@ -113,7 +113,7 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
             SettingsListGroup {
                 val revoked = devices.filter { it.text("state") == "revoked" }.map { it.text("peer") }.toSet()
                 peers.filter { it.id !in revoked }.forEachIndexed { index, peer ->
-                    SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp) },
+                    SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp, colorKey = peer.colorKey) },
                         trailing = { DeviceStatusBadge(peer.status) },
                         action = { choosing = false; actions.addConnection(peer.id) })
                 }

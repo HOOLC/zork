@@ -102,7 +102,7 @@ pub struct RootView {
     restore_reading_pending: bool,
     node_agents: Arc<Vec<serde_json::Value>>,
     device_navigation: Option<Entity<crate::desktop::navigation::DeviceNavigation>>,
-    device_name: Option<String>,
+    device_name: Option<zork_ui::device_name::DeviceName>,
     tasks_by_leader: Arc<HashMap<String, Vec<ProductTask>>>,
     active_leader: Option<String>,
     history: history::HistoryState,
@@ -1351,7 +1351,7 @@ impl RootView {
                 zork_ui::components::region::invalidate(cx, &["transcript"])
             });
         });
-        let local_name = self.device_name.clone();
+        let local_name = self.device_name.as_ref().map(|name| name.display.clone());
         let local_agents = self
             .node_agents
             .iter()

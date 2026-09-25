@@ -5,7 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.TooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,9 +78,21 @@ internal fun DeviceStatusBadge(status: DeviceStatusUi, modifier: Modifier = Modi
     }
 }
 
+/** Touch has no hover: a long press on a device shows the machine name it
+ * registered with. The caller shows [state] from its own long-press handler. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun DeviceName(name: String, status: DeviceStatusUi, modifier: Modifier = Modifier) {
-    val description = deviceNameSummary(name, status) + (status.error?.let { "：$it" } ?: "")
+internal fun MachineNameTooltip(machine: String?, state: TooltipState, content: @Composable () -> Unit) {
+    if (machine.isNullOrBlank()) return content()
+    TooltipBox(TooltipDefaults.rememberPlainTooltipPositionProvider(), tooltip = {
+        PlainTooltip { Text("机器名称：$machine") }
+    }, state = state, enableUserInput = false) { content() }
+}
+
+@Composable
+internal fun DeviceName(name: String, status: DeviceStatusUi, modifier: Modifier = Modifier, machine: String? = null) {
+    val spoken = machine?.let { "$name（$it）" } ?: name
+    val description = deviceNameSummary(spoken, status) + (status.error?.let { "：$it" } ?: "")
     Row(modifier.semantics(mergeDescendants = true) { contentDescription = description },
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         DeviceMark(name, 18.dp)

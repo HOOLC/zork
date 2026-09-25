@@ -100,6 +100,62 @@ pub fn targets(state: &AppState) -> Result<Vec<String>> {
     targets.dedup();
     Ok(targets)
 }
+/// This Mesh's devices with the display names every client shows and the
+/// machine names they registered with. Empty outside a Mesh.
+pub fn device_names(state: &AppState) -> Vec<zork_config::membership::ResolvedName> {
+    let root = &state.config.data_root;
+    let Some(group) = zork_config::load_config(root)
+        .ok()
+        .and_then(|config| config.mesh.group)
+    else {
+        return vec![];
+    };
+    let names = zork_config::membership::load_names(root).ok().flatten();
+    zork_config::membership::resolve(&group, names.as_ref())
+}
+
+/// Adds `display_name` and `machine_name` to an Agent-facing entry whose
+/// `field` holds a Station identity.
+pub fn name_entry(
+    devices: &[zork_config::membership::ResolvedName],
+    value: &mut Value,
+    field: &str,
+) {
+    let Some(origin) = value[field].as_str() else {
+        return;
+    };
+    if let Some(device) = devices.iter().find(|d| d.origin == origin) {
+        value["display_name"] = json!(device.display);
+        value["machine_name"] = json!(device.machine);
+    }
+}
+
+/// Accepts a Station identity, `local`, or a device's display or machine
+/// name, and returns the identity tools route to.
+pub fn resolve_target(state: &AppState, target: &str) -> Result<String> {
+    let target = target.trim();
+    if target == "local" || target.starts_with("key:") {
+        return Ok(target.into());
+    }
+    let devices = device_names(state);
+    if let Ok(device) = zork_config::membership::find_device(&devices, target) {
+        return Ok(device.origin.clone());
+    }
+    // Manually paired Stations outside the Mesh keep their own names.
+    let config = zork_config::load_config(&state.config.data_root)?.mesh;
+    let peers: Vec<_> = config
+        .peers
+        .iter()
+        .filter(|p| p.name.trim().eq_ignore_ascii_case(target))
+        .collect();
+    match peers.as_slice() {
+        [peer] => Ok(peer.origin.clone()),
+        [] if config.name.trim().eq_ignore_ascii_case(target) => Ok(identity(state)),
+        [] => anyhow::bail!("device_unknown_target"),
+        _ => anyhow::bail!("device_ambiguous_target"),
+    }
+}
+
 pub fn executable(name: &str) -> Option<PathBuf> {
     let usable = |p: &Path| {
         if !p.is_file() {
@@ -135,5 +191,10 @@ pub fn environment(state: &AppState) -> Value {
         .into_iter()
         .filter_map(|name| executable(name).map(|path| (name.to_owned(), json!(path))))
         .collect::<serde_json::Map<_, _>>();
-    json!({"target":identity(state),"owner":identity(state),"name":zork_config::load_config(&state.config.data_root).map(|c|c.mesh.name).unwrap_or_default(),"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"commands":commands,"managed_workspace_root":zork_config::files_root(&state.config.data_root).join("device-workspaces")})
+    let own = identity(state);
+    let display = device_names(state)
+        .into_iter()
+        .find(|d| d.origin == own)
+        .map(|d| d.display);
+    json!({"target":own,"owner":own,"name":zork_config::load_config(&state.config.data_root).map(|c|c.mesh.name).unwrap_or_default(),"display_name":display,"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"commands":commands,"managed_workspace_root":zork_config::files_root(&state.config.data_root).join("device-workspaces")})
 }

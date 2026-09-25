@@ -178,6 +178,36 @@ def main():
         before = pids()
         print('PASS: Unicode device rename synchronizes through authority, rejects invalid/unauthorized writes, and survives restart', flush=True)
 
+        # Mesh display names are separate from machine names: the authority
+        # backfills A, B, C in join order, any member renames any device, every
+        # Station converges, and duplicates are rejected by the authority.
+        def display(node, origin):
+            names = admin(node, 'GET', '/v1/node/mesh').get('names') or {}
+            return next((d['name'] for d in names.get('devices', []) if d['origin'] == origin), None)
+        for node in (a, b, c):
+            f.wait(lambda node=node: [display(node, n.origin) for n in (a, b, c)] == ['A', 'B', 'C'],
+                'default display letters reach every Station')
+        renamed = admin(c, 'PUT', '/v1/node/mesh/names', {'origin': b.origin, 'name': ' 工作室 '})
+        assert renamed['name'] == '工作室' and renamed['names']['authority'] == a.origin, renamed
+        for node in (a, b, c):
+            f.wait(lambda node=node: display(node, b.origin) == '工作室', 'display rename reaches every Station')
+        assert admin(b, 'GET', '/v1/mesh')['names']['devices'][1]['name'] == '工作室'
+        assert member_name(a, b.origin) == '工作室小熊', 'the machine name is kept'
+        status, value = request(a, 'PUT', '/v1/node/mesh/names', {'origin': c.origin, 'name': '工作室'})
+        assert status == 409 and '已被 Mesh 中的另一台设备使用' in value['error'], (status, value)
+        for invalid in ['', '  ', 'x' * 25]:
+            status, _ = request(b, 'PUT', '/v1/node/mesh/names', {'name': invalid})
+            assert status >= 400, (invalid, status)
+        assert b.request('PUT', '/v1/node/mesh/names', {'name': 'unauthorized'})[0] == 401
+        # A Station renames itself when no origin is given.
+        admin(b, 'PUT', '/v1/node/mesh/names', {'name': 'Studio'})
+        for node in (a, b, c):
+            f.wait(lambda node=node: display(node, b.origin) == 'Studio', 'self rename reaches every Station')
+        c.restart_station()
+        f.wait(lambda: display(c, b.origin) == 'Studio', 'display names survive restart')
+        before = pids()
+        print('PASS: Mesh display names backfill in join order, rename from any member, converge on every Station, reject duplicates and keep machine names', flush=True)
+
         # An invitation changes no membership rows. Its authority notification
         # must still reach settings opened through a different Station.
         f.wait(lambda: all(peer['online'] for peer in admin(b, 'GET', '/v1/mesh')['peers']), 'peer subscriptions online')

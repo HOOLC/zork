@@ -119,6 +119,8 @@ mod tests {
         assert_eq!(settings(&store).unwrap()["service_requested"], false);
         store
             .save_node(&crate::store::SavedNode {
+                machine_name: None,
+                color_key: None,
                 id: "node".into(),
                 name: "node".into(),
                 url: String::new(),

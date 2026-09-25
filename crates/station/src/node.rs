@@ -87,6 +87,7 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/node/mesh/leave", post(leave_mesh))
         .route("/v1/node/mesh/members/remove", post(remove_mesh_member))
         .route("/v1/node/mesh/clients", post(register_mesh_client))
+        .route("/v1/node/mesh/names", axum::routing::put(rename_display))
         .route("/v1/node/agents", get(agents).post(create_agent))
         .route("/v1/node/chats", get(node_chats))
         .route("/v1/node/chats/{chat}/archive", post(node_archive_chat))
@@ -386,6 +387,51 @@ async fn rename_node(
             }
             Ok(json!({"name":name}))
         }
+    }
+    .await;
+    mesh_result(result)
+}
+
+/// Renames a device's Mesh-wide display name (this device unless `origin`
+/// names another member). Outside a Mesh a device has only its own name.
+async fn rename_display(
+    State(state): State<NodeState>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if !authorized(&state, &headers) {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            "Node administrator token required",
+        );
+    }
+    let result: anyhow::Result<Value> = async {
+        let name = body["name"].as_str().unwrap_or_default();
+        let config = zork_config::load_config(&state.app.config.data_root)?;
+        if config.mesh.group.is_none() {
+            let name = zork_config::membership::validate_device_name(name)?;
+            zork_config::update_config(&state.app.config.data_root, |config| {
+                config.mesh.name = name.clone();
+                Ok(())
+            })?;
+            if let Some(service) = state.app.mesh.get() {
+                service.refresh(&state.app).await?;
+            }
+            return Ok(json!({"name":name}));
+        }
+        let service = state
+            .app
+            .mesh
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("mesh_not_ready"))?;
+        let origin = body["origin"]
+            .as_str()
+            .unwrap_or(service.origin())
+            .to_owned();
+        service
+            .enrollment
+            .rename_display(&state.app, &origin, name)
+            .await
     }
     .await;
     mesh_result(result)
@@ -813,6 +859,9 @@ async fn mesh_config(State(state): State<NodeState>, headers: HeaderMap) -> Resp
         Ok(config) => {
             Json(json!({
                 "config": config.mesh,
+                // Beside the config, never inside it: older clients parse
+                // MeshConfig strictly.
+                "names": zork_config::membership::load_names(&state.app.config.data_root).ok().flatten(),
                 "origin": state.app.mesh.get().map(|m| m.origin()),
                 "address": state.app.mesh.get().map(|m| m.address()),
                 "join": state.app.mesh.get().and_then(|m| m.enrollment.join_progress(None).ok().flatten()),

@@ -265,6 +265,40 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "right panel did not shrink back: {restored_width} != {original_width}"
     );
     capture(&mut cx, "statistics.png")?;
+    // The runtime device behind 用量 is the shared device-name component: mark,
+    // name and the status indicator with its own wording, not a glyph in the
+    // panel's muted text.
+    action(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":"history-usage-details"}}),
+    )?;
+    pump(&mut cx)?;
+    let expanded = driver.snapshot(false);
+    let device = expanded
+        .elements
+        .iter()
+        .find(|e| e.id == "history-device" && e.visible)
+        .expect("history runtime device uses the device-name component");
+    assert!(
+        device.label.starts_with("mini1 · ")
+            && !device.label.contains('●')
+            && !device.label.contains('○'),
+        "history device label: {}",
+        device.label
+    );
+    assert!(
+        expanded
+            .elements
+            .iter()
+            .any(|e| e.id == "device-status-Name(\"history-device\")" && e.visible),
+        "history device lacks its status indicator"
+    );
+    capture(&mut cx, "runtime-device.png")?;
+    action(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":"history-usage-details"}}),
+    )?;
+    pump(&mut cx)?;
     action(
         &mut cx,
         json!({"type":"scroll","target":{"x":width-80.,"y":ledger_y},"delta_y":-600}),

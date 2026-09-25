@@ -197,17 +197,30 @@ fn invite_json(value: &Value, now: u64) -> Result<Value> {
     }))
 }
 
-/// A Station member or client by exact identity, identity prefix or name.
+/// A Station member or client by exact identity, display name, machine
+/// name or identity prefix.
 fn resolve_member(
     group: &zork_config::membership::MeshGroup,
+    names: Option<&zork_config::membership::MeshNames>,
     own_origin: Option<&str>,
     target: &str,
 ) -> Result<zork_config::membership::MeshDevice> {
     let devices: Vec<_> = group.members.iter().chain(&group.clients).collect();
-    let exact: Vec<_> = devices
+    // Display names are unique within the Mesh and match first.
+    let displayed = zork_config::membership::resolve(group, names);
+    let by_display: Vec<_> = displayed
         .iter()
-        .filter(|d| d.origin == target || d.name == target)
+        .filter(|d| d.display.trim().eq_ignore_ascii_case(target.trim()))
+        .filter_map(|d| devices.iter().find(|m| m.origin == d.origin))
         .collect();
+    let exact: Vec<_> = if by_display.len() == 1 {
+        by_display
+    } else {
+        devices
+            .iter()
+            .filter(|d| d.origin == target || d.name == target)
+            .collect()
+    };
     let matches = if exact.is_empty() {
         devices
             .iter()
@@ -272,27 +285,53 @@ mod resolve_member_tests {
         };
         let own = Some("key:manager");
         assert_eq!(
-            resolve_member(&group, own, "jointest").unwrap().origin,
+            resolve_member(&group, None, own, "jointest")
+                .unwrap()
+                .origin,
             "key:abcdefgh1234"
         );
         assert_eq!(
-            resolve_member(&group, own, "BFT-JOINTEST").unwrap().origin,
+            resolve_member(&group, None, own, "BFT-JOINTEST")
+                .unwrap()
+                .origin,
             "key:zzzzzzzz9999"
         );
         assert_eq!(
-            resolve_member(&group, own, "abcdefgh").unwrap().name,
+            resolve_member(&group, None, own, "abcdefgh").unwrap().name,
             "jointest"
         );
         assert_eq!(
-            resolve_member(&group, own, "phone").unwrap().origin,
+            resolve_member(&group, None, own, "phone").unwrap().origin,
             "key:phone0000000"
         );
-        assert!(resolve_member(&group, own, "studio").is_err());
-        assert!(resolve_member(&group, own, "missing").is_err());
+        assert!(resolve_member(&group, None, own, "studio").is_err());
+        assert!(resolve_member(&group, None, own, "missing").is_err());
         assert!(
-            resolve_member(&group, own, "abc").is_err(),
+            resolve_member(&group, None, own, "abc").is_err(),
             "short prefixes do not match"
         );
+        // Display names resolve too, ahead of machine names.
+        let mut names = zork_config::membership::MeshNames::new("key:manager");
+        names.reconcile(&group);
+        assert_eq!(
+            resolve_member(&group, Some(&names), own, "b")
+                .unwrap()
+                .origin,
+            "key:abcdefgh1234"
+        );
+        assert_eq!(
+            resolve_member(&group, Some(&names), own, "D")
+                .unwrap()
+                .origin,
+            "key:phone0000000"
+        );
+        assert_eq!(
+            resolve_member(&group, Some(&names), own, "jointest")
+                .unwrap()
+                .origin,
+            "key:abcdefgh1234"
+        );
+        assert!(resolve_member(&group, Some(&names), own, "A").is_err());
     }
 }
 
@@ -404,11 +443,18 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             .await?;
         let config: zork_config::MeshConfig = serde_json::from_value(value["config"].clone())?;
         let group = config.group.context("当前设备尚未加入 Mesh")?;
-        let member = resolve_member(&group, value["origin"].as_str(), &target)?;
+        let names = serde_json::from_value(value["names"].clone()).ok();
+        let member = resolve_member(&group, names.as_ref(), value["origin"].as_str(), &target)?;
+        let shown = zork_config::membership::resolve(&group, names.as_ref())
+            .into_iter()
+            .find(|d| d.origin == member.origin)
+            .filter(|d| d.display != member.name)
+            .map(|d| format!("{}（{}）", d.display, member.name))
+            .unwrap_or_else(|| member.name.clone());
         ensure!(
             confirmed,
             "将把 {}（{}）移出 Mesh，它会立即失去访问权限，需要新的邀请才能重新加入。确认后请加 --yes 重试。",
-            member.name,
+            shown,
             member.origin
         );
         let result = zork_client_core::mesh_enrollment::remove_member(
@@ -419,7 +465,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
         if json_output {
             println!("{result}");
         } else {
-            println!("已将 {} 移出 Mesh。", member.name);
+            println!("已将 {shown} 移出 Mesh。");
         }
         return Ok(());
     }
@@ -452,8 +498,20 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             };
             println!("  direct: {}", listed(&value["address"]["direct"]));
             println!("  relays: {}", listed(&value["address"]["relays"]));
+            // Mesh devices by display name, with the machine name they registered with.
+            let group: Option<zork_config::membership::MeshGroup> =
+                serde_json::from_value(value["config"]["group"].clone()).ok();
+            let names = serde_json::from_value(value["names"].clone()).ok();
+            let named = group
+                .as_ref()
+                .map(|group| zork_config::membership::resolve(group, names.as_ref()))
+                .unwrap_or_default();
             for peer in value["config"]["peers"].as_array().into_iter().flatten() {
-                println!("  {}", peer["name"].as_str().unwrap_or("Device"));
+                let machine = peer["name"].as_str().unwrap_or("Device");
+                match named.iter().find(|d| peer["origin"] == d.origin.as_str()) {
+                    Some(d) if d.display != machine => println!("  {}（{machine}）", d.display),
+                    _ => println!("  {machine}"),
+                }
             }
             if value["config"]["enabled"] == false {
                 println!("  Mesh：未启用（运行 zork mesh invite 或在设备设置中开启）");

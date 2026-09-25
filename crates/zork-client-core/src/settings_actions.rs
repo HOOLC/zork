@@ -202,9 +202,11 @@ impl Client {
                 Ok(value)
             }
             SettingsAction::RenameDevice { name } => {
-                let name = zork_config::membership::validate_device_name(&name)?;
-                self.request(&peer, "PUT", "/v1/node/name", Some(json!({"name":name})))
-                    .await
+                // The Mesh-wide display name; the machine name stays as registered.
+                let value =
+                    crate::device_names::rename(&self.store, &station, &peer, &name).await?;
+                device.refresh(crate::state::Domains::ALL).await;
+                Ok(value)
             }
             SettingsAction::RenameProfile { profile, name } => {
                 profiles.rename(profile, name).await?;
@@ -333,6 +335,8 @@ mod tests {
     };
     fn save_node(client: &Client, url: String) {
         let saved = crate::store::SavedNode {
+            machine_name: None,
+            color_key: None,
             id: "node".into(),
             name: "fixture".into(),
             url: url.clone(),
@@ -445,6 +449,8 @@ mod tests {
         let store = crate::store::ClientStore::open(root.path()).unwrap();
         store
             .save_node(&crate::store::SavedNode {
+                machine_name: None,
+                color_key: None,
                 id: "node".into(),
                 name: "fixture".into(),
                 url: String::new(),
