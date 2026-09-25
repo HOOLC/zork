@@ -32,6 +32,8 @@ pub struct Page {
     input: Entity<ComposerInput>,
     device_menu: bool,
     picker_open: bool,
+    /// The optional connection list inside the panel is unfolded.
+    picker_connections_open: bool,
     picker_focus: FocusHandle,
     picker_trigger_focus: FocusHandle,
     picker_scroll: ScrollHandle,
@@ -79,6 +81,7 @@ impl Page {
             input,
             device_menu: false,
             picker_open: false,
+            picker_connections_open: false,
             picker_focus: cx.focus_handle(),
             picker_trigger_focus: cx.focus_handle(),
             picker_scroll: ScrollHandle::new(),
@@ -304,12 +307,15 @@ impl Render for Page {
             .and_then(|index| self.data.thinking.options.get(index))
             .filter(|_| !self.data.model.value.is_empty())
             .map(|option| self.thinking_label(&option.value));
+        // The connection shows only when pinned; automatic is the default.
+        let connection_part = self.pinned_connection().map(|o| o.label.clone());
         let model_part = model_label.clone();
         let thinking_part = trigger_label.clone();
-        let label = match &trigger_label {
-            Some(thinking) => format!("{model_label} · {thinking}"),
-            None => model_label,
-        };
+        let label = [Some(model_label), trigger_label, connection_part.clone()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" · ");
         let picker_owner = cx.entity().downgrade();
         let change_owner = picker_owner.clone();
         let popup_width = 380_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
@@ -343,6 +349,17 @@ impl Render for Page {
                                     .child(format!("· {thinking}")),
                             )
                         })
+                        .when_some(connection_part, |v, connection| {
+                            v.child(
+                                div()
+                                    .id("new-chat-options-connection")
+                                    .max_w(px(120.))
+                                    .truncate()
+                                    .text_color(rgb(ZORK_UI.palette.muted))
+                                    .child(format!("· {connection}"))
+                                    .automation(AutomationRole::Status, connection),
+                            )
+                        })
                         .child(ui::icon("icons/chevron-down.svg", 12.)),
                 )
                 .on_click(cx.listener(|view, event: &ClickEvent, window, cx| {
@@ -365,6 +382,7 @@ impl Render for Page {
                 let _ = change_owner.update(app, |view, cx| {
                     view.picker_open = *open;
                     view.picker_revealed.set(None);
+                    view.picker_connections_open = false;
                     if *open {
                         window.focus(&view.picker_focus, cx);
                     }

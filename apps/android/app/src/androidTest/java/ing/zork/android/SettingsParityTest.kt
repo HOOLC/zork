@@ -269,15 +269,51 @@ class SettingsParityTest {
                 assertEquals("opencode-go", choice.providers["opencode"])
                 assertEquals("openai", choice.providers["personal"])
             }
-            click("选择模型"); await("OpenCode Go"); reveal("deepseek-flash"); capture("model-picker-makers")
+            click("选择模型"); reveal("deepseek-flash"); capture("model-picker-makers")
             scenario.onActivity { it.previewTheme = "dark" }; settle(); capture("model-picker-makers-dark")
             scenario.onActivity { it.previewTheme = "light" }; settle()
-            click("deepseek-flash"); click("完成"); settle()
+            click("deepseek-flash")
+            // The connection list names OpenCode Go, the only connection serving it.
+            click("连接 · 自动"); await("连接 · OpenCode Go"); assertNull(find("连接 · API"))
+            click("完成"); settle()
             scenario.onActivity { assertEquals("deepseek-flash", it.newChatSnapshot!!.getJSONObject("model").getString("value")) }
             capture("model-capsule-maker")
         }
         launch("profile").use { settle(); await("fixture-model"); capture("profile-model-makers") }
         launch("profile-custom").use { settle(); await("qwen3-32b"); capture("profile-custom-model-makers") }
+    }
+
+    /** Model and thinking are the choice; the connection is optional and automatic by default. */
+    @Test fun modelPickerListsEachModelOnceAndPinsAConnectionOptionally() {
+        ActivityScenario.launch<Nav7PreviewActivity>(Intent(instrumentation.targetContext, Nav7PreviewActivity::class.java)
+            .putExtra("screen", "new-chat").putExtra("width", 0).putExtra("scenario", "picker")).use { scenario ->
+            fun selection(): Triple<String, String, String> {
+                var result = Triple("", "", "")
+                scenario.onActivity { val s = it.newChatSnapshot!!
+                    result = Triple(s.getJSONObject("model").getString("value"), s.getJSONObject("thinking").getString("value"), s.getJSONObject("profile").getString("value")) }
+                return result
+            }
+            settle(); click("选择模型"); await("Demo fast")
+            // Offered by 个人账号 and API, Demo model is still one row.
+            assertEquals(1, nodes().count { it.isVisibleToUser && it.text?.toString() == "Demo model" })
+            assertEquals(Triple("Demo model", "high", "auto"), selection())
+            click("连接 · 自动"); await("连接 · 个人账号"); await("连接 · API"); assertNull(find("连接 · OpenCode Go"))
+            capture("model-picker-connections")
+            scenario.onActivity { it.previewTheme = "dark" }; settle(); capture("model-picker-connections-dark")
+            scenario.onActivity { it.previewTheme = "light" }; settle()
+            click("连接 · API"); settle()
+            assertEquals(Triple("Demo model", "high", "api"), selection())
+            await("连接 · API"); capture("model-picker-pinned")
+            // API does not serve Demo fast: the connection returns to automatic.
+            click("Demo fast"); settle()
+            assertEquals(Triple("Demo fast", "off", "auto"), selection())
+            await("连接 · 自动")
+            click("Demo model"); click("连接 · 自动"); click("连接 · API"); click("完成"); settle()
+            capture("model-capsule-pinned")
+            // The capsule names the pinned connection after model and thinking.
+            val states = generateSequence(find("选择模型")) { it.parent }.mapNotNull { it.stateDescription?.toString() }.toList()
+            assertTrue(states.toString(), "Demo model · high · API" in states)
+        }
     }
 
     @Test fun failedRenameKeepsTheDraftForRetry() {

@@ -25,6 +25,8 @@
   "new_chat_profile_auto": "Profile · Automatic",
   "new_chat_choose_profile": "Choose Profile",
   "new_chat_model_profile": "Model and Profile",
+  "new_chat_connection": "Connection",
+  "new_chat_connection_auto": "Automatic",
   "new_chat_profile_automatic": "Automatic",
   "new_chat_retry": "Retry creation",
   "new_chat_creating": "Creating Chat…",
