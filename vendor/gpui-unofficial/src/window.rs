@@ -62,8 +62,8 @@ use std::{
 use uuid::Uuid;
 
 pub(crate) mod a11y;
-mod prompts;
 mod paint_region;
+mod prompts;
 pub use paint_region::PaintRegion;
 
 pub use a11y::A11ySubtreeBuilder;
@@ -489,7 +489,9 @@ impl FocusId {
     /// Obtains whether the element associated with this handle contains the focused
     /// element or is itself focused.
     pub fn contains_focused(&self, window: &Window, cx: &App) -> bool {
-        let result = window.current_focus(cx).is_some_and(|focused| self.contains(focused.id, window));
+        let result = window
+            .current_focus(cx)
+            .is_some_and(|focused| self.contains(focused.id, window));
         window.observe_focus_query(FocusQuery::Contains(*self), FocusValue::Flag(result));
         result
     }
@@ -497,7 +499,9 @@ impl FocusId {
     /// Obtains whether the element associated with this handle is contained within the
     /// focused element or is itself focused.
     pub fn within_focused(&self, window: &Window, cx: &App) -> bool {
-        let result = window.current_focus(cx).is_some_and(|focused| focused.id.contains(*self, window));
+        let result = window
+            .current_focus(cx)
+            .is_some_and(|focused| focused.id.contains(*self, window));
         window.observe_focus_query(FocusQuery::Within(*self), FocusValue::Flag(result));
         result
     }
@@ -1082,7 +1086,9 @@ impl Frame {
         let mut set_hover_hitbox_count = false;
         let mut hit_test = HitTest::default();
         for hitbox in self.hitboxes.iter().rev() {
-            if !crate::InteractionGate::allows(hitbox.interaction_gates.as_deref()) { continue; }
+            if !crate::InteractionGate::allows(hitbox.interaction_gates.as_deref()) {
+                continue;
+            }
             let bounds = hitbox.bounds.intersect(&hitbox.content_mask.bounds);
             if bounds.contains(&position) {
                 hit_test.ids.push(hitbox.id);
@@ -2101,8 +2107,11 @@ impl Window {
 
     /// Obtain the currently focused [`FocusHandle`]. If no elements are focused, returns `None`.
     pub fn focused(&self, cx: &App) -> Option<FocusHandle> {
-        let focus=self.current_focus(cx);
-        self.observe_focus_query(FocusQuery::Any, FocusValue::Focus(focus.as_ref().map(|focus|focus.id)));
+        let focus = self.current_focus(cx);
+        self.observe_focus_query(
+            FocusQuery::Any,
+            FocusValue::Focus(focus.as_ref().map(|focus| focus.id)),
+        );
         focus
     }
 
@@ -2128,7 +2137,7 @@ impl Window {
             return;
         }
 
-        let previous=self.focus;
+        let previous = self.focus;
         self.focus = Some(handle.id);
         self.focus_generation = self.focus_generation.wrapping_add(1);
         self.clear_pending_keystrokes();
@@ -2153,7 +2162,7 @@ impl Window {
             return;
         }
 
-        let previous=self.focus;
+        let previous = self.focus;
         if self.focus.is_some() {
             self.focus_generation = self.focus_generation.wrapping_add(1);
         }
@@ -2533,8 +2542,11 @@ impl Window {
     /// to capture what would be rendered without displaying it or requiring the window to be visible.
     #[cfg(any(test, feature = "test-support"))]
     pub fn render_to_image(&self) -> anyhow::Result<image::RgbaImage> {
-        self.platform_window
-            .render_to_image(self.presentation_scene.as_ref().unwrap_or(&self.rendered_frame.scene))
+        self.platform_window.render_to_image(
+            self.presentation_scene
+                .as_ref()
+                .unwrap_or(&self.rendered_frame.scene),
+        )
     }
 
     /// Returns the quads in the most recently rendered frame's scene, so tests can assert on
@@ -2897,7 +2909,11 @@ impl Window {
     /// The capture is automatically released on mouse up.
     pub fn capture_pointer(&mut self, hitbox_id: HitboxId) {
         self.captured_hitbox = Some(hitbox_id);
-        self.captured_interaction_gates = self.rendered_frame.hitboxes.iter().find(|hitbox| hitbox.id == hitbox_id)
+        self.captured_interaction_gates = self
+            .rendered_frame
+            .hitboxes
+            .iter()
+            .find(|hitbox| hitbox.id == hitbox_id)
             .and_then(|hitbox| hitbox.interaction_gates.clone());
     }
 
@@ -2950,7 +2966,9 @@ impl Window {
             .iter()
             .filter(|(_, dependency)| {
                 dependency.focus.iter().any(|(query, values)| {
-                    if only_within && !matches!(query, FocusQuery::Within(_)) { return false; }
+                    if only_within && !matches!(query, FocusQuery::Within(_)) {
+                        return false;
+                    }
                     let current = query.evaluate(focus, &self.rendered_frame.dispatch_tree);
                     values.iter().any(|value| *value != current)
                 })
@@ -2993,8 +3011,13 @@ impl Window {
                 // A focus target introduced by this draw was absent from the
                 // previous tree. Recheck after mounting it instead of carrying
                 // that stale absence into a full-window refresh next frame.
-                if window.focus.is_some_and(|focus| window.rendered_frame
-                    .dispatch_tree.focusable_node_id(focus).is_none()) {
+                if window.focus.is_some_and(|focus| {
+                    window
+                        .rendered_frame
+                        .dispatch_tree
+                        .focusable_node_id(focus)
+                        .is_none()
+                }) {
                     window.refresh();
                 } else {
                     for view in window.changed_focus_dependents(window.focus, false) {
@@ -3104,8 +3127,13 @@ impl Window {
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
         self.paint_replacements.clear();
-        self.presentation_scene = self.retain_submitted_frame
-            .then(|| self.submitted_scene.as_ref().map(|frame| frame.scene.clone()))
+        self.presentation_scene = self
+            .retain_submitted_frame
+            .then(|| {
+                self.submitted_scene
+                    .as_ref()
+                    .map(|frame| frame.scene.clone())
+            })
             .flatten();
         mem::swap(&mut self.rendered_frame, &mut self.next_frame);
         self.next_frame.clear();
@@ -3114,8 +3142,7 @@ impl Window {
         let mut focus_before_listeners = self.focus;
 
         let focus_path_changed = previous_focus_path != current_focus_path;
-        if focus_path_changed || previous_window_active != current_window_active
-        {
+        if focus_path_changed || previous_window_active != current_window_active {
             if !previous_focus_path.is_empty() && current_focus_path.is_empty() {
                 self.focus_lost_path = previous_focus_path.clone();
                 self.focus_lost_listeners
@@ -3157,15 +3184,25 @@ impl Window {
         // resulting focus events.
         if self.focus != focus_before_listeners {
             self.refresh_focus_change(focus_before_listeners);
-        } else if self.focus.is_none_or(|focus| self.rendered_frame.dispatch_tree.focusable_node_id(focus).is_some()) {
+        } else if self.focus.is_none_or(|focus| {
+            self.rendered_frame
+                .dispatch_tree
+                .focusable_node_id(focus)
+                .is_some()
+        }) {
             // A focused node can move between containers without changing its
             // handle. Queries read the previous complete tree during render;
             // refresh only cached results changed by the completed new tree.
-            let focus=self.current_focus(cx).map(|focus|focus.id);
-            let affected=self.changed_focus_dependents(focus, !focus_path_changed && self.focus_generation == focus_generation_at_start);
+            let focus = self.current_focus(cx).map(|focus| focus.id);
+            let affected = self.changed_focus_dependents(
+                focus,
+                !focus_path_changed && self.focus_generation == focus_generation_at_start,
+            );
             if !affected.is_empty() {
-                self.on_next_frame(move |window,cx| {
-                    for view in affected { window.invalidator.invalidate_view(view,cx); }
+                self.on_next_frame(move |window, cx| {
+                    for view in affected {
+                        window.invalidator.invalidate_view(view, cx);
+                    }
                 });
             }
         }
@@ -3199,9 +3236,15 @@ impl Window {
     }
 
     fn invalidate_entities(&mut self) {
-        self.presentation_dependencies.borrow_mut().retain(|view, _| {
-            self.rendered_frame.dispatch_tree.view_path_reversed(*view).next().is_some()
-        });
+        self.presentation_dependencies
+            .borrow_mut()
+            .retain(|view, _| {
+                self.rendered_frame
+                    .dispatch_tree
+                    .view_path_reversed(*view)
+                    .next()
+                    .is_some()
+            });
         let mut views = self.invalidator.take_views();
         for entity in views.drain() {
             self.mark_view_dirty(entity);
@@ -3211,7 +3254,11 @@ impl Window {
 
     #[profiling::function]
     fn present(&mut self) {
-        let scene = self.presentation_scene.as_ref().unwrap_or(&self.rendered_frame.scene).clone();
+        let scene = self
+            .presentation_scene
+            .as_ref()
+            .unwrap_or(&self.rendered_frame.scene)
+            .clone();
         self.platform_window.draw(&scene);
         if !self.retain_submitted_frame {
             self.submitted_scene = Some(paint_region::SubmittedScene {
@@ -3264,24 +3311,43 @@ impl Window {
     #[cfg(feature = "bench")]
     pub fn benchmark_input_counts(&self) -> [usize; 6] {
         let frame = &self.rendered_frame;
-        [frame.dispatch_tree.len(), frame.hitboxes.len(), frame.mouse_listeners.len(),
-            frame.input_handlers.len(), frame.element_states.len(), frame.accessed_element_states.len()]
+        [
+            frame.dispatch_tree.len(),
+            frame.hitboxes.len(),
+            frame.mouse_listeners.len(),
+            frame.input_handlers.len(),
+            frame.element_states.len(),
+            frame.accessed_element_states.len(),
+        ]
     }
 
     /// Draw dirty UI and observe this frame's GPU completion. Animation
     /// callbacks and input run in a preceding App update so their notifications
     /// have been applied. No pixels are read back and clean frames are omitted.
     #[cfg(feature = "bench")]
-    pub fn benchmark_frame(&mut self, cx: &mut App, offscreen: bool) -> Result<Option<oneshot::Receiver<crate::FrameCompletion>>> {
+    pub fn benchmark_frame(
+        &mut self,
+        cx: &mut App,
+        offscreen: bool,
+    ) -> Result<Option<oneshot::Receiver<crate::FrameCompletion>>> {
         if self.invalidator.is_dirty() {
             self.draw(cx).clear(cx);
         }
-        if !self.needs_present.get() { return Ok(None); }
+        if !self.needs_present.get() {
+            return Ok(None);
+        }
         let (sender, receiver) = oneshot::channel();
-        let observed = crate::frame_completion::observe(Box::new(move |frame| {
-            let _ = sender.send(frame);
-        }), offscreen, || self.present());
-        anyhow::ensure!(observed, "renderer does not support GPU completion measurement");
+        let observed = crate::frame_completion::observe(
+            Box::new(move |frame| {
+                let _ = sender.send(frame);
+            }),
+            offscreen,
+            || self.present(),
+        );
+        anyhow::ensure!(
+            observed,
+            "renderer does not support GPU completion measurement"
+        );
         Ok(Some(receiver))
     }
 
@@ -3327,7 +3393,9 @@ impl Window {
 
     fn draw_roots(&mut self, cx: &mut App) {
         let first_frame = self.rendered_frame.generation == 0;
-        if first_frame { crate::observe_startup("gpui.first_frame_begin"); }
+        if first_frame {
+            crate::observe_startup("gpui.first_frame_begin");
+        }
         self.invalidator.set_phase(DrawPhase::Prepaint);
         self.tooltip_bounds.take();
 
@@ -3360,7 +3428,9 @@ impl Window {
         let scale_factor = self.scale_factor();
         let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
         let root_layout_id = root_element.request_layout(self, cx);
-        if first_frame { crate::observe_startup("gpui.first_frame_layout_requested"); }
+        if first_frame {
+            crate::observe_startup("gpui.first_frame_layout_requested");
+        }
         self.layout_engine
             .as_mut()
             .unwrap()
@@ -3398,7 +3468,9 @@ impl Window {
         self.mouse_hit_test = self.next_frame.hit_test(self.mouse_position);
 
         // Now actually paint the elements.
-        if first_frame { crate::observe_startup("gpui.first_frame_prepainted"); }
+        if first_frame {
+            crate::observe_startup("gpui.first_frame_prepainted");
+        }
         self.invalidator.set_phase(DrawPhase::Paint);
         root_element.paint(self, cx);
 
@@ -3406,7 +3478,9 @@ impl Window {
         self.paint_inspector(inspector_element, cx);
 
         self.paint_deferred_draws(cx);
-        if first_frame { crate::observe_startup("gpui.first_frame_painted"); }
+        if first_frame {
+            crate::observe_startup("gpui.first_frame_painted");
+        }
 
         if let Some(mut prompt_element) = prompt_element {
             prompt_element.paint(self, cx);
@@ -3545,14 +3619,15 @@ impl Window {
             traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
 
             for deferred_draw_ix in traversal_order {
-                self.deferred_draw_priority = self.next_frame.deferred_draws[deferred_draw_ix].priority;
+                self.deferred_draw_priority =
+                    self.next_frame.deferred_draws[deferred_draw_ix].priority;
                 let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
                     self.element_id_stack
                         .clone_from(&deferred_draw.element_id_stack);
                     self.text_style_stack
                         .clone_from(&deferred_draw.text_style_stack);
-                    self.interaction_gates=deferred_draw.interaction_gates.clone();
+                    self.interaction_gates = deferred_draw.interaction_gates.clone();
                     (
                         deferred_draw.element.take(),
                         deferred_draw.parent_node,
@@ -3584,7 +3659,7 @@ impl Window {
 
             self.element_id_stack.clear();
             self.text_style_stack.clear();
-            self.interaction_gates=None;
+            self.interaction_gates = None;
             self.deferred_draw_priority = 0;
             round_start = round_end;
         }
@@ -3610,7 +3685,7 @@ impl Window {
                 .dispatch_tree
                 .set_active_node(deferred_draw.parent_node);
 
-            self.interaction_gates=deferred_draw.interaction_gates.clone();
+            self.interaction_gates = deferred_draw.interaction_gates.clone();
             let paint_start = self.paint_index();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
@@ -3630,7 +3705,7 @@ impl Window {
         self.deferred_draw_priority = 0;
         self.next_frame.deferred_draws = deferred_draws;
         self.element_id_stack.clear();
-        self.interaction_gates=None;
+        self.interaction_gates = None;
     }
 
     fn deferred_draw_traversal_order(&mut self) -> SmallVec<[usize; 8]> {
@@ -4305,7 +4380,9 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> (R, crate::PaintSnapshot) {
         self.invalidator.debug_assert_paint();
-        self.next_frame.scene.begin_retained(key, bounds.scale(self.scale_factor()));
+        self.next_frame
+            .scene
+            .begin_retained(key, bounds.scale(self.scale_factor()));
         let result = f(self);
         let content = self.next_frame.scene.end_snapshot(previous.map(|p| &p.0));
         (result, crate::PaintSnapshot(content))
@@ -4333,7 +4410,9 @@ impl Window {
     pub fn paint_retained_snapshot(&mut self, snapshot: &crate::PaintSnapshot) {
         self.invalidator.debug_assert_paint();
         if self.gpu_layers_enabled() {
-            self.next_frame.scene.record_retained_content(snapshot.0.clone());
+            self.next_frame
+                .scene
+                .record_retained_content(snapshot.0.clone());
         } else {
             self.next_frame.scene.paint_snapshot(snapshot);
         }
@@ -4341,29 +4420,40 @@ impl Window {
 
     /// Drawing layer of the current layout/paint traversal. Sources retain
     /// this destination identity independently of their screen coordinates.
-    pub fn drawing_priority(&self) -> usize { self.deferred_draw_priority }
+    pub fn drawing_priority(&self) -> usize {
+        self.deferred_draw_priority
+    }
 
     /// Sequence of frames submitted to the platform. A UI paint can precede
     /// submission, so it alone cannot acknowledge a presentation handoff.
-    pub fn presentation_sequence(&self) -> u64 { self.presentation_sequence }
+    pub fn presentation_sequence(&self) -> u64 {
+        self.presentation_sequence
+    }
 
     /// Replay a transferred picture without flattening its existing retained
     /// layers. Offset belongs to the destination's layout, not its animation.
     pub fn paint_snapshot_at(&mut self, snapshot: &crate::PaintSnapshot, offset: Point<Pixels>) {
         self.invalidator.debug_assert_paint();
-        let bounds = snapshot.bounds().map(|value| px(value.0 / self.scale_factor()));
+        let bounds = snapshot
+            .bounds()
+            .map(|value| px(value.0 / self.scale_factor()));
         let destination = Bounds::new(bounds.origin + offset, bounds.size);
         self.paint_barrier(destination);
         if offset == point(px(0.), px(0.)) {
-            self.next_frame.scene.replay(0..snapshot.0.scene.len(), &snapshot.0.scene);
+            self.next_frame
+                .scene
+                .replay(0..snapshot.0.scene.len(), &snapshot.0.scene);
         } else {
             let mut effect = crate::scene::PaintEffect::new(
-                point(ScaledPixels(0.), ScaledPixels(0.)), 1.,
+                point(ScaledPixels(0.), ScaledPixels(0.)),
+                1.,
                 vec![self.content_mask().bounds.scale(self.scale_factor())],
             );
             effect.translation = offset.scale(self.scale_factor());
             self.next_frame.scene.push_paint_effect(effect);
-            self.next_frame.scene.replay(0..snapshot.0.scene.len(), &snapshot.0.scene);
+            self.next_frame
+                .scene
+                .replay(0..snapshot.0.scene.len(), &snapshot.0.scene);
             self.next_frame.scene.pop_paint_effect();
         }
         self.paint_barrier(destination);
@@ -4373,7 +4463,9 @@ impl Window {
     /// primitive batches must remain above everything already painted here.
     pub fn paint_barrier(&mut self, bounds: Bounds<Pixels>) {
         self.invalidator.debug_assert_paint();
-        self.next_frame.scene.paint_barrier(bounds.scale(self.scale_factor()));
+        self.next_frame
+            .scene
+            .paint_barrier(bounds.scale(self.scale_factor()));
     }
 
     /// Invalidate a view whose presentation ownership changes during render.
@@ -4420,7 +4512,15 @@ impl Window {
         mask: &Path<Pixels>,
         fallback: impl Fn() -> Vec<Bounds<Pixels>> + Send + Sync + 'static,
     ) -> bool {
-        self.paint_masked_snapshot_at(snapshot, bounds, scale, opacity, mask, fallback, point(px(0.), px(0.)))
+        self.paint_masked_snapshot_at(
+            snapshot,
+            bounds,
+            scale,
+            opacity,
+            mask,
+            fallback,
+            point(px(0.), px(0.)),
+        )
     }
 
     /// Composite a captured subtree in the destination's current coordinates.
@@ -4434,7 +4534,9 @@ impl Window {
         fallback: impl Fn() -> Vec<Bounds<Pixels>> + Send + Sync + 'static,
         offset: Point<Pixels>,
     ) -> bool {
-        let Some(effect) = self.masked_paint_effect(bounds, scale, opacity, mask, fallback) else { return false; };
+        let Some(effect) = self.masked_paint_effect(bounds, scale, opacity, mask, fallback) else {
+            return false;
+        };
         let mut effect = effect;
         effect.translation = offset.scale(self.scale_factor());
         let clip = Bounds::new(bounds.origin + offset, bounds.size).scale(self.scale_factor());
@@ -4443,7 +4545,9 @@ impl Window {
             std::sync::Arc::make_mut(mask).content_mask.bounds = clip;
         }
         self.next_frame.scene.push_paint_effect(effect);
-        self.next_frame.scene.record_retained_content(snapshot.0.clone());
+        self.next_frame
+            .scene
+            .record_retained_content(snapshot.0.clone());
         self.next_frame.scene.pop_paint_effect();
         true
     }
@@ -4473,7 +4577,12 @@ impl Window {
         mask.color = crate::rgb(0xffffff).into();
         effect.gpu_mask = Some(std::sync::Arc::new(mask));
         effect.mask_clips = Some(std::sync::Arc::new(crate::scene::DeferredPaintClips::new(
-            move || fallback().into_iter().map(|bounds| bounds.scale(factor)).collect(),
+            move || {
+                fallback()
+                    .into_iter()
+                    .map(|bounds| bounds.scale(factor))
+                    .collect()
+            },
         )));
         Some(effect)
     }
@@ -4506,7 +4615,9 @@ impl Window {
         assert!(opacity.is_finite() && (0.0..=1.0).contains(&opacity));
         let factor = self.scale_factor();
         let mut effect = crate::scene::PaintEffect::new(
-            origin.scale(factor), scale, clips.iter().map(|b| b.scale(factor)).collect(),
+            origin.scale(factor),
+            scale,
+            clips.iter().map(|b| b.scale(factor)).collect(),
         );
         effect.opacity = opacity;
         self.next_frame.scene.push_paint_effect(effect);
@@ -4748,7 +4859,12 @@ impl Window {
 
     /// Paint borrowed local path geometry at an offset without cloning and
     /// translating its vertices before converting them to physical pixels.
-    pub fn paint_path_at(&mut self, path: &Path<Pixels>, offset: Point<Pixels>, color: impl Into<Background>) {
+    pub fn paint_path_at(
+        &mut self,
+        path: &Path<Pixels>,
+        offset: Point<Pixels>,
+        color: impl Into<Background>,
+    ) {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
@@ -4758,9 +4874,7 @@ impl Window {
         path.content_mask = content_mask.scale(scale_factor);
         let color: Background = color.into();
         path.color = color.opacity(opacity);
-        self.next_frame
-            .scene
-            .insert_primitive(path);
+        self.next_frame.scene.insert_primitive(path);
     }
 
     /// Paint an underline into the scene for the next frame at the current z-index.
@@ -5262,32 +5376,39 @@ impl Window {
             // Taffy may invoke a text measurer after its view has finished
             // requesting layout. Keep that work attached to the view's cache.
             let captures = self.text_layout_captures.clone();
-            return self.layout_engine.as_mut().unwrap().request_measured_layout(
-                style, rem_size, scale_factor, move |known, available, window, cx| {
-                    let start = window.text_system().layout_index();
-                    let result = measure(known, available, window, cx);
-                    let end = window.text_system().layout_index();
-                    if start != end {
-                        for capture in &captures {
-                            let mut ranges = capture.borrow_mut();
-                            // Nested measurements can finish before their caller.
-                            // Merge overlapping/adjacent work, preserving gaps
-                            // belonging to other views.
-                            while ranges.last().is_some_and(|range| range.start >= start) {
-                                ranges.pop();
-                            }
-                            if let Some(last) = ranges.last_mut()
-                                && last.end >= start
-                            {
-                                last.end = end.clone();
-                            } else {
-                                ranges.push(start.clone()..end.clone());
+            return self
+                .layout_engine
+                .as_mut()
+                .unwrap()
+                .request_measured_layout(
+                    style,
+                    rem_size,
+                    scale_factor,
+                    move |known, available, window, cx| {
+                        let start = window.text_system().layout_index();
+                        let result = measure(known, available, window, cx);
+                        let end = window.text_system().layout_index();
+                        if start != end {
+                            for capture in &captures {
+                                let mut ranges = capture.borrow_mut();
+                                // Nested measurements can finish before their caller.
+                                // Merge overlapping/adjacent work, preserving gaps
+                                // belonging to other views.
+                                while ranges.last().is_some_and(|range| range.start >= start) {
+                                    ranges.pop();
+                                }
+                                if let Some(last) = ranges.last_mut()
+                                    && last.end >= start
+                                {
+                                    last.end = end.clone();
+                                } else {
+                                    ranges.push(start.clone()..end.clone());
+                                }
                             }
                         }
-                    }
-                    result
-                },
-            );
+                        result
+                    },
+                );
         }
         self.layout_engine
             .as_mut()
@@ -5755,9 +5876,16 @@ impl Window {
             // Input routing uses the current complete tree. Apply presentation
             // invalidation after dispatch, so switching to keyboard input does
             // not draw an intermediate focus-ring frame before the key action.
-            let observers: Vec<_> = self.presentation_dependencies.borrow().iter()
-                .filter(|(_, dependency)| dependency.modality).map(|(view, _)| *view).collect();
-            for view in observers { self.invalidator.invalidate_view(view, cx); }
+            let observers: Vec<_> = self
+                .presentation_dependencies
+                .borrow()
+                .iter()
+                .filter(|(_, dependency)| dependency.modality)
+                .map(|(view, _)| *view)
+                .collect();
+            for view in observers {
+                self.invalidator.invalidate_view(view, cx);
+            }
             self.invalidator.set_dirty(true);
         }
 

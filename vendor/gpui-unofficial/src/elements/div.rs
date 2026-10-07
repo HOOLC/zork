@@ -2295,8 +2295,9 @@ impl Interactivity {
                             // a later sibling scroll container must not consume one.
                             let inherited_autoscroll = window.take_autoscroll();
                             let result = f(&style, scroll_offset, hitbox, window, cx);
-                            let remaining = window.take_autoscroll().and_then(|target|
-                                self.autoscroll_descendant(target, bounds, &style, window));
+                            let remaining = window.take_autoscroll().and_then(|target| {
+                                self.autoscroll_descendant(target, bounds, &style, window)
+                            });
                             if let Some(target) = remaining.or(inherited_autoscroll) {
                                 window.request_autoscroll(target);
                             }
@@ -2525,7 +2526,10 @@ impl Interactivity {
                                         // every item, and `focus_next` from a container would jump
                                         // to the first item in the whole window instead of its own.
                                         if let Some(focus_handle) = &self.tracked_focus_handle {
-                                            window.next_frame.tab_stops.insert_gated(focus_handle, window.interaction_gates.clone());
+                                            window.next_frame.tab_stops.insert_gated(
+                                                focus_handle,
+                                                window.interaction_gates.clone(),
+                                            );
                                         }
                                         if let Some(hitbox) = hitbox {
                                             #[cfg(debug_assertions)]
@@ -4345,30 +4349,76 @@ mod tests {
     impl Render for DescendantAutoscroll {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let height = if self.oversized { 2000. } else { 32. };
-            div().id("outer").w(px(100.)).h(px(100.)).overflow_y_scroll().track_scroll(&self.outer)
-                .child(div().w(px(100.)).h(px(1000.)).flex_shrink_0().flex().flex_col()
-                    .child(canvas(move |bounds,window,_| {
-                        window.request_autoscroll(Bounds::new(bounds.origin+point(px(0.),px(700.)),size(px(32.),px(height))));
-                    },|_,_,_,_|{}).w(px(100.)).h(px(50.)).flex_shrink_0())
-                    .child(div().id("sibling").w(px(100.)).h(px(50.)).flex_shrink_0().overflow_y_scroll().track_scroll(&self.sibling)
-                        .child(div().w(px(100.)).h(px(300.)).flex_shrink_0())))
+            div()
+                .id("outer")
+                .w(px(100.))
+                .h(px(100.))
+                .overflow_y_scroll()
+                .track_scroll(&self.outer)
+                .child(
+                    div()
+                        .w(px(100.))
+                        .h(px(1000.))
+                        .flex_shrink_0()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            canvas(
+                                move |bounds, window, _| {
+                                    window.request_autoscroll(Bounds::new(
+                                        bounds.origin + point(px(0.), px(700.)),
+                                        size(px(32.), px(height)),
+                                    ));
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .w(px(100.))
+                            .h(px(50.))
+                            .flex_shrink_0(),
+                        )
+                        .child(
+                            div()
+                                .id("sibling")
+                                .w(px(100.))
+                                .h(px(50.))
+                                .flex_shrink_0()
+                                .overflow_y_scroll()
+                                .track_scroll(&self.sibling)
+                                .child(div().w(px(100.)).h(px(300.)).flex_shrink_0()),
+                        ),
+                )
         }
     }
     #[test]
     fn descendant_autoscroll_uses_ancestor_and_leaves_sibling_unchanged() {
-        for (oversized,expected) in [(false,-632.),(true,-700.)] {
-            let mut cx=TestAppContext::single();
-            let outer=ScrollHandle::new();let sibling=ScrollHandle::new();
-            let window=cx.add_window(|_,_|DescendantAutoscroll {outer:outer.clone(),sibling:sibling.clone(),oversized});
+        for (oversized, expected) in [(false, -632.), (true, -700.)] {
+            let mut cx = TestAppContext::single();
+            let outer = ScrollHandle::new();
+            let sibling = ScrollHandle::new();
+            let window = cx.add_window(|_, _| DescendantAutoscroll {
+                outer: outer.clone(),
+                sibling: sibling.clone(),
+                oversized,
+            });
             cx.run_until_parked();
             let mut scheduled = 0;
             for _ in 0..3 {
-                scheduled += cx.update(|app| app.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx)).unwrap());
+                scheduled += cx.update(|app| {
+                    app.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))
+                        .unwrap()
+                });
                 cx.run_until_parked();
             }
-            assert_eq!(scheduled, 1, "scroll must schedule exactly one follow-up frame");
-            assert!((outer.offset().y-px(expected)).as_f32().abs()<0.1,"{:?}",outer.offset());
-            assert_eq!(sibling.offset(),Point::default());
+            assert_eq!(
+                scheduled, 1,
+                "scroll must schedule exactly one follow-up frame"
+            );
+            assert!(
+                (outer.offset().y - px(expected)).as_f32().abs() < 0.1,
+                "{:?}",
+                outer.offset()
+            );
+            assert_eq!(sibling.offset(), Point::default());
         }
     }
 

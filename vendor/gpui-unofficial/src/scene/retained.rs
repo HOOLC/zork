@@ -33,7 +33,8 @@ impl RetainedFramePlan {
     }
     fn visit(&mut self, scene: &Scene, limit: usize) {
         for layer in &scene.retained_layers {
-            if self.required.len() >= limit || layer.effects.len() > 1
+            if self.required.len() >= limit
+                || layer.effects.len() > 1
                 || layer.effects.iter().any(|effect| effect.clips.len() > 1)
             {
                 self.supported = false;
@@ -43,27 +44,37 @@ impl RetainedFramePlan {
             self.textures += 1 + u64::from(key.masked);
             self.required.insert(key);
             self.visit(&layer.content.scene, limit);
-            if !self.supported { return; }
+            if !self.supported {
+                return;
+            }
         }
     }
     /// Check allocation of every composition, including repeated versions.
     pub fn fits(&self, size: [u32; 2], bytes_per_pixel: u32, max_bytes: u64) -> bool {
-        self.supported && u64::from(size[0]).checked_mul(u64::from(size[1]))
-            .and_then(|pixels| pixels.checked_mul(u64::from(bytes_per_pixel)))
-            .and_then(|bytes| bytes.checked_mul(self.textures))
-            .is_some_and(|bytes| bytes <= max_bytes)
+        self.supported
+            && u64::from(size[0])
+                .checked_mul(u64::from(size[1]))
+                .and_then(|pixels| pixels.checked_mul(u64::from(bytes_per_pixel)))
+                .and_then(|bytes| bytes.checked_mul(self.textures))
+                .is_some_and(|bytes| bytes <= max_bytes)
     }
     /// Assign an independent slot to each composition of an immutable version.
     pub fn next_key(&mut self, layer: &RetainedLayer) -> RetainedLayerKey {
         let content = Arc::as_ptr(&layer.content) as usize;
         let masked = layer.effects.iter().any(|effect| effect.gpu_mask.is_some());
         let next = self.next.entry((content, masked)).or_default();
-        let key = RetainedLayerKey { content, masked, instance: *next };
+        let key = RetainedLayerKey {
+            content,
+            masked,
+            instance: *next,
+        };
         *next += 1;
         key
     }
     /// Whether a cached slot is needed by this frame, possibly later in order.
-    pub fn contains(&self, key: &RetainedLayerKey) -> bool { self.required.contains(key) }
+    pub fn contains(&self, key: &RetainedLayerKey) -> bool {
+        self.required.contains(key)
+    }
 }
 
 #[expect(missing_docs)]
@@ -116,7 +127,9 @@ pub enum SceneBatch {
 
 impl Scene {
     pub(crate) fn can_retain(&self) -> bool {
-        if self.retained_paint_disabled { return false; }
+        if self.retained_paint_disabled {
+            return false;
+        }
         if let Some(capture) = self.captures.last() {
             return capture.scene.can_retain();
         }
@@ -239,13 +252,18 @@ impl Scene {
     fn same_drawing(&self, other: &Self) -> bool {
         // Node placement is resolved by the enclosing frame. Equal local
         // pixels do not establish equal drawing identities or references.
-        !self.has_paint_nodes && !other.has_paint_nodes
+        !self.has_paint_nodes
+            && !other.has_paint_nodes
             && self.surfaces.is_empty()
             && other.surfaces.is_empty()
             && self.quads == other.quads
             && self.shadows == other.shadows
             && self.paths.len() == other.paths.len()
-            && self.paths.iter().zip(&other.paths).all(|(a, b)| a.same_drawing(b))
+            && self
+                .paths
+                .iter()
+                .zip(&other.paths)
+                .all(|(a, b)| a.same_drawing(b))
             && self.underlines == other.underlines
             && self.monochrome_sprites == other.monochrome_sprites
             && self.subpixel_sprites == other.subpixel_sprites

@@ -26,7 +26,8 @@ pub enum TabStopOperation {
 impl TabStopOperation {
     fn focus_handle(&self) -> Option<&FocusHandle> {
         match self {
-            TabStopOperation::Insert(focus_handle) | TabStopOperation::InsertGated(focus_handle, _) => Some(focus_handle),
+            TabStopOperation::Insert(focus_handle)
+            | TabStopOperation::InsertGated(focus_handle, _) => Some(focus_handle),
             _ => None,
         }
     }
@@ -52,7 +53,9 @@ struct TabStopNode {
 }
 
 impl TabStopNode {
-    fn is_tab_stop(&self) -> bool { self.tab_stop && crate::InteractionGate::allows(self.interaction_gates.as_deref()) }
+    fn is_tab_stop(&self) -> bool {
+        self.tab_stop && crate::InteractionGate::allows(self.interaction_gates.as_deref())
+    }
 }
 
 impl Ord for TabStopNode {
@@ -81,12 +84,18 @@ impl Default for TabStopMap {
 }
 
 impl TabStopMap {
-    pub fn insert(&mut self, focus_handle: &FocusHandle) { self.insert_gated(focus_handle, None); }
+    pub fn insert(&mut self, focus_handle: &FocusHandle) {
+        self.insert_gated(focus_handle, None);
+    }
 
-    pub fn insert_gated(&mut self, focus_handle: &FocusHandle, gates: Option<std::sync::Arc<[crate::InteractionGate]>>) {
+    pub fn insert_gated(
+        &mut self,
+        focus_handle: &FocusHandle,
+        gates: Option<std::sync::Arc<[crate::InteractionGate]>>,
+    ) {
         self.insertion_history.push(match &gates {
-            Some(gates)=>TabStopOperation::InsertGated(focus_handle.clone(),gates.clone()),
-            None=>TabStopOperation::Insert(focus_handle.clone()),
+            Some(gates) => TabStopOperation::InsertGated(focus_handle.clone(), gates.clone()),
+            None => TabStopOperation::Insert(focus_handle.clone()),
         });
         let mut path = self.current_path.clone();
         path.0.push(focus_handle.tab_index);
@@ -197,7 +206,9 @@ impl TabStopMap {
         for node in nodes {
             match node {
                 TabStopOperation::Insert(focus_handle) => self.insert(focus_handle),
-                TabStopOperation::InsertGated(focus_handle, gates) => self.insert_gated(focus_handle, Some(gates.clone())),
+                TabStopOperation::InsertGated(focus_handle, gates) => {
+                    self.insert_gated(focus_handle, Some(gates.clone()))
+                }
                 TabStopOperation::Group(tab_index) => self.begin_group(*tab_index),
                 TabStopOperation::GroupEnd => self.end_group(),
             }
@@ -209,7 +220,10 @@ impl TabStopMap {
     }
 
     pub(crate) fn tab_stop_count(&self) -> usize {
-        self.by_id.values().filter(|node| node.is_tab_stop()).count()
+        self.by_id
+            .values()
+            .filter(|node| node.is_tab_stop())
+            .count()
     }
 
     fn focus_handle_for_order(&self, order: &TabStopNode) -> Option<FocusHandle> {
@@ -333,20 +347,22 @@ mod tests {
 
     #[test]
     fn retained_interaction_gates_survive_tab_replay_and_reactivation() {
-        let focus_map=Arc::new(FocusMap::default());
-        let first=FocusHandle::new(&focus_map).tab_stop(true);
-        let hidden=FocusHandle::new(&focus_map).tab_stop(true);
-        let gate=crate::InteractionGate::new(false);
-        let mut map=TabStopMap::default();map.insert(&first);
-        map.insert_gated(&hidden,Some(Arc::from([gate.clone()])));
-        assert_eq!(map.next(Some(&first.id)).unwrap().id,first.id);
+        let focus_map = Arc::new(FocusMap::default());
+        let first = FocusHandle::new(&focus_map).tab_stop(true);
+        let hidden = FocusHandle::new(&focus_map).tab_stop(true);
+        let gate = crate::InteractionGate::new(false);
+        let mut map = TabStopMap::default();
+        map.insert(&first);
+        map.insert_gated(&hidden, Some(Arc::from([gate.clone()])));
+        assert_eq!(map.next(Some(&first.id)).unwrap().id, first.id);
         gate.set_enabled(true);
-        assert_eq!(map.next(Some(&first.id)).unwrap().id,hidden.id);
-        let mut replay=TabStopMap::default();replay.replay(&map.insertion_history);
+        assert_eq!(map.next(Some(&first.id)).unwrap().id, hidden.id);
+        let mut replay = TabStopMap::default();
+        replay.replay(&map.insertion_history);
         gate.set_enabled(false);
-        assert_eq!(replay.next(Some(&first.id)).unwrap().id,first.id);
+        assert_eq!(replay.next(Some(&first.id)).unwrap().id, first.id);
         gate.set_enabled(true);
-        assert_eq!(replay.prev(Some(&first.id)).unwrap().id,hidden.id);
+        assert_eq!(replay.prev(Some(&first.id)).unwrap().id, hidden.id);
     }
 
     #[test]

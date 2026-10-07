@@ -684,7 +684,6 @@ mod tests {
     fn test_animation_parent() {
         div()
             .id("id")
-            //
             .with_animation(
                 "animation",
                 Animation::new(Duration::from_secs(1)),

@@ -1,10 +1,10 @@
+use crate::window::TextLayoutCapture;
 use crate::{
     AnyElement, AnyEntity, AnyWeakEntity, App, Bounds, ContentMask, Context, Element, ElementId,
     Entity, EntityId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, PaintIndex,
     Pixels, PrepaintStateIndex, Render, RenderOnce, Style, StyleRefinement, TextStyle, WeakEntity,
 };
 use crate::{Empty, Window};
-use crate::window::TextLayoutCapture;
 use anyhow::Result;
 use collections::FxHashSet;
 use refineable::Refineable;
@@ -366,10 +366,16 @@ impl<V: View> Element for ViewElement<V> {
                         window.begin_view_render(entity_id);
                         let layout_start = (self.measure_cache && !caching_disabled)
                             .then(|| window.prepaint_index());
-                        let text_capture = layout_start.as_ref().map(|_| TextLayoutCapture::default());
+                        let text_capture =
+                            layout_start.as_ref().map(|_| TextLayoutCapture::default());
                         let mut render = |cx: &mut App| {
                             let mut render_view = |window: &mut Window| {
-                                let mut element = self.view.take().unwrap().render(window, cx).into_any_element();
+                                let mut element = self
+                                    .view
+                                    .take()
+                                    .unwrap()
+                                    .render(window, cx)
+                                    .into_any_element();
                                 let layout_id = element.request_layout(window, cx);
                                 (layout_id, element)
                             };
@@ -382,7 +388,8 @@ impl<V: View> Element for ViewElement<V> {
                         let (layout_id, element) = if self.measure_cache && !caching_disabled {
                             let (result, accessed) = cx.detect_accessed_entities(render);
                             self.layout_accessed_entities = accessed;
-                            self.layout_range = layout_start.map(|start| start..window.prepaint_index());
+                            self.layout_range =
+                                layout_start.map(|start| start..window.prepaint_index());
                             if let Some(capture) = &text_capture {
                                 // Synchronous measurements are already in layout_range.
                                 // The registered measurers retain this capture for work
@@ -440,19 +447,28 @@ impl<V: View> Element for ViewElement<V> {
                             rasterized: self.rasterized,
                         };
                         let start = window.prepaint_index();
-                        let (_, accessed) = cx.detect_accessed_entities(|cx| element.prepaint(window, cx));
+                        let (_, accessed) =
+                            cx.detect_accessed_entities(|cx| element.prepaint(window, cx));
                         self.layout_accessed_entities.extend(accessed);
-                        window.with_element_state::<ViewElementState, _>(global_id.unwrap(), |_, window| {
-                            ((), ViewElementState {
-                                frame_generation: window.next_frame.generation,
-                                layout_range: self.layout_range.take(),
-                                text_layouts: self.text_layouts.take(),
-                                prepaint_range: start..window.prepaint_index(),
-                                paint_range: PaintIndex::default()..PaintIndex::default(),
-                                cache_key,
-                                accessed_entities: mem::take(&mut self.layout_accessed_entities),
-                            })
-                        });
+                        window.with_element_state::<ViewElementState, _>(
+                            global_id.unwrap(),
+                            |_, window| {
+                                (
+                                    (),
+                                    ViewElementState {
+                                        frame_generation: window.next_frame.generation,
+                                        layout_range: self.layout_range.take(),
+                                        text_layouts: self.text_layouts.take(),
+                                        prepaint_range: start..window.prepaint_index(),
+                                        paint_range: PaintIndex::default()..PaintIndex::default(),
+                                        cache_key,
+                                        accessed_entities: mem::take(
+                                            &mut self.layout_accessed_entities,
+                                        ),
+                                    },
+                                )
+                            },
+                        );
                     } else {
                         element.prepaint(window, cx);
                     }
@@ -585,10 +601,16 @@ impl<V: View> Element for ViewElement<V> {
                                 let refreshing = mem::replace(&mut window.refreshing, true);
                                 if self.rasterized && window.gpu_layers_enabled() {
                                     use std::hash::{Hash, Hasher};
-                                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                                    "retained-view".hash(&mut hasher); global_id.hash(&mut hasher);
-                                    window.with_retained_paint(hasher.finish(), bounds, |window| element.paint(window, cx));
-                                } else { element.paint(window, cx); }
+                                    let mut hasher =
+                                        std::collections::hash_map::DefaultHasher::new();
+                                    "retained-view".hash(&mut hasher);
+                                    global_id.hash(&mut hasher);
+                                    window.with_retained_paint(hasher.finish(), bounds, |window| {
+                                        element.paint(window, cx)
+                                    });
+                                } else {
+                                    element.paint(window, cx);
+                                }
                                 window.refreshing = refreshing;
                             } else {
                                 window.reuse_paint(element_state.paint_range.clone());

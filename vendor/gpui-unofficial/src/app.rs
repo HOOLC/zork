@@ -1098,7 +1098,10 @@ impl App {
         let previous = mem::take(self.entities.accessed_entities.get_mut());
         let result = callback(self);
         let accessed = mem::replace(self.entities.accessed_entities.get_mut(), previous);
-        self.entities.accessed_entities.get_mut().extend(accessed.iter().copied());
+        self.entities
+            .accessed_entities
+            .get_mut()
+            .extend(accessed.iter().copied());
         (result, accessed)
     }
 

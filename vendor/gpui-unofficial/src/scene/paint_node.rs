@@ -1,7 +1,13 @@
 //! Persistent drawing references. Placement is resolved for the complete frame
 //! before any pixels are submitted, including cached and paint-only replay.
 use super::*;
-use std::{collections::HashMap, sync::{Arc, atomic::{AtomicU64, Ordering}}};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 /// A drawing identity shared by a control and its presentation layers.
 /// Its ordinary placement remains in every frame; later placements replace
@@ -21,7 +27,10 @@ mod tests {
     use crate::{rgba, size};
 
     fn drawing(color: u32) -> Arc<RetainedContent> {
-        let bounds = Bounds::new(point(ScaledPixels(0.), ScaledPixels(0.)), size(ScaledPixels(20.), ScaledPixels(20.)));
+        let bounds = Bounds::new(
+            point(ScaledPixels(0.), ScaledPixels(0.)),
+            size(ScaledPixels(20.), ScaledPixels(20.)),
+        );
         let mut scene = Scene::default();
         scene.insert_primitive(Quad {
             bounds,
@@ -30,7 +39,11 @@ mod tests {
             ..Default::default()
         });
         scene.finish();
-        Arc::new(RetainedContent { id: 1, bounds, scene })
+        Arc::new(RetainedContent {
+            id: 1,
+            bounds,
+            scene,
+        })
     }
 
     #[test]
@@ -83,7 +96,11 @@ mod tests {
         let mut nested = Scene::default();
         nested.paint_node(child, red.clone());
         nested.finish();
-        let nested = Arc::new(RetainedContent { id: 2, bounds: red.bounds, scene: nested });
+        let nested = Arc::new(RetainedContent {
+            id: 2,
+            bounds: red.bounds,
+            scene: nested,
+        });
         let mut frame = Scene::default();
         frame.paint_node(parent, nested);
         frame.paint_node(child, blue.clone());
@@ -102,7 +119,11 @@ mod tests {
         let mut nested = Scene::default();
         nested.paint_node(node, picture.clone());
         nested.finish();
-        let nested = Arc::new(RetainedContent { id: 2, bounds: picture.bounds, scene: nested });
+        let nested = Arc::new(RetainedContent {
+            id: 2,
+            bounds: picture.bounds,
+            scene: nested,
+        });
         let mut cached = Scene::default();
         cached.record_retained_content(nested.clone());
         cached.finish();
@@ -123,7 +144,11 @@ mod tests {
         let mut content = Scene::default();
         content.record_retained_content(picture.clone());
         content.finish();
-        let content = Arc::new(RetainedContent { id: 2, bounds: picture.bounds, scene: content });
+        let content = Arc::new(RetainedContent {
+            id: 2,
+            bounds: picture.bounds,
+            scene: content,
+        });
         let mut frame = Scene::default();
         frame.paint_node(PaintNode::default(), content);
         frame.finish();
@@ -131,7 +156,10 @@ mod tests {
         let fallback = frame.without_retained_layers();
         assert!(fallback.retained_layers.is_empty());
         assert_eq!(fallback.quads.len(), 1);
-        assert_eq!(fallback.quads[0].background, picture.scene.quads[0].background);
+        assert_eq!(
+            fallback.quads[0].background,
+            picture.scene.quads[0].background
+        );
     }
 
     #[test]
@@ -172,7 +200,10 @@ type Placements = HashMap<PaintNode, Vec<usize>>;
 impl Scene {
     pub(crate) fn paint_node(&mut self, node: PaintNode, content: Arc<RetainedContent>) {
         self.has_paint_nodes = true;
-        self.paint_operations.push(PaintOperation::Node { node, content: content.clone() });
+        self.paint_operations.push(PaintOperation::Node {
+            node,
+            content: content.clone(),
+        });
         if let Some(capture) = self.captures.last_mut() {
             capture.scene.paint_node(node, content);
         }
@@ -197,11 +228,16 @@ impl Scene {
         let mut index = 0;
         while index < self.paint_operations.len() {
             match &self.paint_operations[index] {
-                PaintOperation::SnapshotStart { length } if *length > 0 && index + length <= self.len() => {
+                PaintOperation::SnapshotStart { length }
+                    if *length > 0 && index + length <= self.len() =>
+                {
                     index += length;
                     continue;
                 }
-                PaintOperation::RetainedStart { content: Some(_), length } if *length > 0 && index + length <= self.len() => {
+                PaintOperation::RetainedStart {
+                    content: Some(_),
+                    length,
+                } if *length > 0 && index + length <= self.len() => {
                     indices.push(index);
                     index += length;
                     continue;
@@ -226,8 +262,13 @@ impl Scene {
                     }
                 }
                 PaintOperation::RetainedContent(content)
-                | PaintOperation::RetainedStart { content: Some(content), .. } => {
-                    if content.scene.has_paint_nodes { content.scene.collect_placements(path, placements); }
+                | PaintOperation::RetainedStart {
+                    content: Some(content),
+                    ..
+                } => {
+                    if content.scene.has_paint_nodes {
+                        content.scene.collect_placements(path, placements);
+                    }
                 }
                 _ => {}
             }
@@ -235,7 +276,12 @@ impl Scene {
         }
     }
 
-    fn compose_placements(&mut self, source: &Scene, path: &mut Vec<usize>, placements: &Placements) {
+    fn compose_placements(
+        &mut self,
+        source: &Scene,
+        path: &mut Vec<usize>,
+        placements: &Placements,
+    ) {
         for index in source.drawing_operations() {
             path.push(index);
             match &source.paint_operations[index] {
@@ -247,28 +293,43 @@ impl Scene {
                     }
                 }
                 PaintOperation::RetainedContent(content)
-                | PaintOperation::RetainedStart { content: Some(content), .. } => {
+                | PaintOperation::RetainedStart {
+                    content: Some(content),
+                    ..
+                } => {
                     self.compose_content(content, true, path, placements);
                 }
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
-                PaintOperation::SharedPrimitive(primitive) => self.insert_shared_primitive(primitive.clone()),
+                PaintOperation::SharedPrimitive(primitive) => {
+                    self.insert_shared_primitive(primitive.clone())
+                }
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
                 PaintOperation::Barrier(bounds) => self.paint_barrier(*bounds),
                 PaintOperation::StartEffect(effect) => self.push_paint_effect(effect.clone()),
                 PaintOperation::EndEffect => self.pop_paint_effect(),
-                PaintOperation::SnapshotStart { .. } | PaintOperation::RetainedStart { .. }
-                | PaintOperation::RetainedEnd | PaintOperation::RegionMarker { .. } => {}
+                PaintOperation::SnapshotStart { .. }
+                | PaintOperation::RetainedStart { .. }
+                | PaintOperation::RetainedEnd
+                | PaintOperation::RegionMarker { .. } => {}
             }
             path.pop();
         }
     }
 
-    fn compose_content(&mut self, content: &Arc<RetainedContent>, retained: bool, path: &mut Vec<usize>, placements: &Placements) {
+    fn compose_content(
+        &mut self,
+        content: &Arc<RetainedContent>,
+        retained: bool,
+        path: &mut Vec<usize>,
+        placements: &Placements,
+    ) {
         let compatible = if content.scene.has_paint_nodes && retained && self.can_retain() {
             let mut local = Placements::new();
             content.scene.collect_placements(path, &mut local);
-            local.iter().all(|(node, placement)| placements.get(node) == Some(placement))
+            local
+                .iter()
+                .all(|(node, placement)| placements.get(node) == Some(placement))
         } else {
             !content.scene.has_paint_nodes
         };

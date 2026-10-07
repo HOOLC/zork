@@ -8,7 +8,9 @@ use super::*;
 pub(crate) struct FrameScene(Arc<Scene>);
 impl std::ops::Deref for FrameScene {
     type Target = Scene;
-    fn deref(&self) -> &Scene { &self.0 }
+    fn deref(&self) -> &Scene {
+        &self.0
+    }
 }
 impl std::ops::DerefMut for FrameScene {
     fn deref_mut(&mut self) -> &mut Scene {
@@ -29,12 +31,17 @@ impl FrameScene {
         self.deref_mut().paint_barrier(bounds);
     }
     pub fn clear(&mut self) {
-        if let Some(scene) = Arc::get_mut(&mut self.0) { scene.clear(); }
-        else { *self = Self::default(); }
+        if let Some(scene) = Arc::get_mut(&mut self.0) {
+            scene.clear();
+        } else {
+            *self = Self::default();
+        }
     }
 }
 impl From<Scene> for FrameScene {
-    fn from(scene: Scene) -> Self { Self(Arc::new(scene)) }
+    fn from(scene: Scene) -> Self {
+        Self(Arc::new(scene))
+    }
 }
 
 pub(super) struct SubmittedScene {
@@ -82,24 +89,41 @@ impl Window {
     /// also works when an element was reused by an intervening UI frame and
     /// its original region token has expired.
     pub fn snapshot_presented(&self, key: u64, bounds: Bounds<Pixels>) -> crate::PaintSnapshot {
-        let viewport = Bounds::new(point(px(0.), px(0.)), self.viewport_size()).scale(self.scale_factor());
+        let viewport =
+            Bounds::new(point(px(0.), px(0.)), self.viewport_size()).scale(self.scale_factor());
         let bounds = bounds.scale(self.scale_factor()).intersect(&viewport);
-        let source = self.submitted_scene.as_ref().map_or(&self.rendered_frame.scene, |frame| &frame.scene);
+        let source = self
+            .submitted_scene
+            .as_ref()
+            .map_or(&self.rendered_frame.scene, |frame| &frame.scene);
         let mut scene = Scene::default();
         if bounds != viewport {
             scene.push_paint_effect(crate::scene::PaintEffect::new(
-                point(ScaledPixels(0.), ScaledPixels(0.)), 1., vec![bounds]));
+                point(ScaledPixels(0.), ScaledPixels(0.)),
+                1.,
+                vec![bounds],
+            ));
         }
         scene.replay(0..source.len(), source);
-        if bounds != viewport { scene.pop_paint_effect(); }
+        if bounds != viewport {
+            scene.pop_paint_effect();
+        }
         scene.finish();
-        crate::PaintSnapshot(std::sync::Arc::new(crate::RetainedContent { id: key, bounds, scene }))
+        crate::PaintSnapshot(std::sync::Arc::new(crate::RetainedContent {
+            id: key,
+            bounds,
+            scene,
+        }))
     }
 
     /// Copy the last presented drawing of a region, including paint-only
     /// replacements. This is also valid during the next UI draw: the old
     /// submitted scene remains the authority until the next presentation.
-    pub fn snapshot_paint_region(&self, key: u64, region: &PaintRegion) -> Option<crate::PaintSnapshot> {
+    pub fn snapshot_paint_region(
+        &self,
+        key: u64,
+        region: &PaintRegion,
+    ) -> Option<crate::PaintSnapshot> {
         let submitted = self.submitted_scene.as_ref()?;
         if self.handle.window_id() != region.window
             || self.viewport_size() != region.viewport
@@ -117,19 +141,25 @@ impl Window {
         let mut scene = Scene::default();
         let mut position = range.start;
         for (start, (end, replacement)) in &submitted.replacements {
-            if *end <= range.start || *start >= range.end { continue; }
-            if *start < range.start || *end > range.end { return None; }
+            if *end <= range.start || *start >= range.end {
+                continue;
+            }
+            if *start < range.start || *end > range.end {
+                return None;
+            }
             scene.replay(position..*start, &submitted.base);
             scene.replay(0..replacement.len(), replacement);
             position = *end;
         }
         scene.replay(position..range.end, &submitted.base);
         scene.finish();
-        Some(crate::PaintSnapshot(std::sync::Arc::new(crate::RetainedContent {
-            id: key,
-            bounds: region.mask.bounds.scale(region.scale),
-            scene,
-        })))
+        Some(crate::PaintSnapshot(std::sync::Arc::new(
+            crate::RetainedContent {
+                id: key,
+                bounds: region.mask.bounds.scale(region.scale),
+                scene,
+            },
+        )))
     }
 
     /// Record a top-level paint range that can later be replaced without
@@ -142,13 +172,17 @@ impl Window {
         self.invalidator.debug_assert_paint();
         let independent = self.next_frame.scene.can_replace_paint();
         let id = (self.next_frame.generation, self.next_frame.scene.len());
-        if independent { self.next_frame.scene.region_marker(id, true); }
+        if independent {
+            self.next_frame.scene.region_marker(id, true);
+        }
         let start = self.next_frame.scene.len();
         let mask = self.content_mask();
         let opacity = self.element_opacity;
         let result = paint(self);
         let end = self.next_frame.scene.len();
-        if independent { self.next_frame.scene.region_marker(id, false); }
+        if independent {
+            self.next_frame.scene.region_marker(id, false);
+        }
         let region = independent.then(|| PaintRegion {
             id,
             window: self.handle.window_id(),
@@ -213,7 +247,9 @@ impl Window {
         );
         composed.finish();
         self.presentation_scene = if self.retain_submitted_frame {
-            self.submitted_scene.as_ref().map(|frame| frame.scene.clone())
+            self.submitted_scene
+                .as_ref()
+                .map(|frame| frame.scene.clone())
         } else {
             Some(composed.into())
         };
@@ -304,7 +340,11 @@ mod tests {
                     window.paint_quad(fill(bounds, rgb(0x112233)));
                 }));
                 let pending = window.snapshot_paint_region(0x7a05, &regions[0]).unwrap();
-                assert_eq!(pending.0.scene.quads.len(), 2, "prepared drawing replaced the submitted picture");
+                assert_eq!(
+                    pending.0.scene.quads.len(),
+                    2,
+                    "prepared drawing replaced the submitted picture"
+                );
                 window.present();
                 // An input invalidation must retain the last presented
                 // picture long enough for a layer transfer to copy it.
@@ -339,11 +379,17 @@ mod tests {
     #[gpui::test]
     fn handoff_retains_the_submitted_picture_and_its_region_baseline(cx: &mut TestAppContext) {
         let handle = cx.add_window(|_, _| RegionView::default());
-        let (old_region, old_generation, old_picture) = handle.update(cx, |view, window, _| {
-            window.present();
-            let region = view.regions.borrow()[0].clone();
-            (region, window.rendered_frame.generation, window.submitted_scene.as_ref().unwrap().scene.quads.clone())
-        }).unwrap();
+        let (old_region, old_generation, old_picture) = handle
+            .update(cx, |view, window, _| {
+                window.present();
+                let region = view.regions.borrow()[0].clone();
+                (
+                    region,
+                    window.rendered_frame.generation,
+                    window.submitted_scene.as_ref().unwrap().scene.quads.clone(),
+                )
+            })
+            .unwrap();
         cx.update_window(handle.into(), |root, window, cx| {
             window.draw(cx).clear(cx);
             let view = root.downcast::<RegionView>().unwrap();
@@ -355,9 +401,15 @@ mod tests {
                 window.paint_quad(fill(region.mask.bounds, rgb(0xabcdef)));
                 assert!(window.retain_presented_frame());
             }));
-            assert_eq!(window.presentation_scene.as_ref().unwrap().quads, old_picture);
+            assert_eq!(
+                window.presentation_scene.as_ref().unwrap().quads,
+                old_picture
+            );
             window.present();
-            assert_eq!(window.submitted_scene.as_ref().unwrap().generation, old_generation);
+            assert_eq!(
+                window.submitted_scene.as_ref().unwrap().generation,
+                old_generation
+            );
             assert!(window.snapshot_paint_region(11, &old_region).is_some());
             assert!(window.snapshot_paint_region(12, &region).is_none());
             assert_eq!(window.rendered_frame.generation, input_generation);
@@ -368,9 +420,13 @@ mod tests {
             }));
             assert!(!window.retain_submitted_frame);
             window.present();
-            assert_eq!(window.submitted_scene.as_ref().unwrap().generation, input_generation);
+            assert_eq!(
+                window.submitted_scene.as_ref().unwrap().generation,
+                input_generation
+            );
             assert!(window.snapshot_paint_region(13, &region).is_some());
-        }).unwrap();
+        })
+        .unwrap();
     }
 
     #[gpui::test]
